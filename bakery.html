@@ -299,7 +299,152 @@ header{background:var(--navy);color:#fff;padding:12px 16px;position:sticky;top:0
     <button class="btn btn-warning" onclick="pdfAllOrders()">📄 PDF All</button>
     <span id="order-date-label" style="font-size:.8rem;color:var(--muted);align-self:center"></span>
   </div>
-  <div id="order-body"><div class="no-order">Save today's counts first, then view the order.</div></div>\n</div>\n\n<div class="panel" id="panel-history">\n  <div class="filter-bar">\n    <label>From:</label><input type="date" id="hist-from">\n    <label>To:</label><input type="date" id="hist-to">\n  </div>\n  <div class="filter-bar">\n    <label>Item:</label>\n    <input type="text" id="hist-item" placeholder="All items">\n    <button class="btn btn-primary btn-sm" onclick="loadHistory()">Load</button>\n    <button class="btn btn-sm" style="background:#555;color:#fff" onclick="downloadHistoryCSV()">⬇ CSV</button>\n  </div>\n  <div id="history-body"><div style="padding:32px;text-align:center;color:var(--muted)">Set a date range and click Load.</div></div>\n</div>\n\n<div class="panel" id="panel-catalog">\n  <div class="btn-row">\n    <button class="btn btn-success btn-sm" onclick="openAddModal()">+ Add Item</button>\n    <input type="text" id="cat-search" placeholder="Search…"\n      style="flex:1;min-width:120px;border:1.5px solid var(--border);border-radius:var(--radius);\n             padding:8px 12px;font-size:.9rem;background:var(--card);box-shadow:var(--shadow)"\n      oninput="renderCatalog()">\n    <select id="cat-cat-filter"\n      style="border:1.5px solid var(--border);border-radius:var(--radius);\n             padding:8px 10px;font-size:.85rem;background:var(--card)"\n      onchange="renderCatalog()">\n      <option value="">All categories</option>\n    </select>\n    <label style="display:flex;align-items:center;gap:5px;font-size:.82rem;\n      font-weight:600;color:var(--navy);white-space:nowrap;cursor:pointer">\n      <input type="checkbox" id="cat-show-inactive" onchange="renderCatalog()"> Inactive\n    </label>\n  </div>\n  <div id="catalog-body"><div style="padding:32px;text-align:center;color:var(--muted)">Loading catalog…</div></div>\n</div>\n\n<div id="modal-overlay">\n  <div class="modal-card">\n    <div class="modal-hdr">\n      <span id="modal-title">Add Item</span>\n      <button onclick="closeModal()">×</button>\n    </div>\n    <div class="modal-body">\n      <div class="modal-grid">\n        <div class="full-col">\n          <label class="modal-lbl">Item Name *</label>\n          <input id="m-name" class="modal-inp" type="text">\n        </div>\n        <div class="full-col">\n          <label class="modal-lbl">Category *</label>\n          <select id="m-cat" class="modal-inp">\n            <option value="">— select —</option>\n            <option>Pastries</option><option>Bagels</option><option>Dairy</option>\n            <option>Cookies</option><option>Brownies</option>\n            <option>Cheese</option><option>Meats</option>\n          </select>\n        </div>\n        <div>\n          <label class="modal-lbl">Vendor</label>\n          <input id="m-vendor" class="modal-inp" type="text">\n        </div>\n        <div>\n          <label class="modal-lbl">SKU</label>\n          <input id="m-sku" class="modal-inp" type="text" style="font-family:monospace">\n        </div>\n        <div>\n          <label class="modal-lbl">PAR</label>\n          <input id="m-par" class="modal-inp" type="number" min="0" step="1" placeholder="0">\n        </div>\n        <div>\n          <label class="modal-lbl">Price ($)</label>\n          <input id="m-price" class="modal-inp" type="number" min="0" step="0.01" placeholder="0.00">\n        </div>\n        <div class="full-col">\n          <label class="modal-lbl">Packaging</label>\n          <input id="m-packaging" class="modal-inp" type="text" placeholder="e.g. Each, Box">\n        </div>\n        <div class="full-col" style="display:flex;align-items:center;gap:8px">\n          <input id="m-active" type="checkbox" checked style="width:18px;height:18px;cursor:pointer">\n          <label for="m-active" style="font-size:.88rem;font-weight:600;cursor:pointer">Active — appears in daily entry</label>\n        </div>\n      </div>\n      <div id="modal-err" class="modal-err"></div>\n      <div class="modal-footer">\n        <button onclick="closeModal()" class="btn btn-sm" style="background:#eee;color:#333">Cancel</button>\n        <button onclick="saveItem()" class="btn btn-primary btn-sm" id="modal-save-btn">Save Item</button>\n      </div>\n    </div>\n  </div>\n</div>\n\n<!-- SETTINGS -->\n<div class="panel" id="panel-settings">\n  <div class="card" style="padding:18px;margin-bottom:12px">\n    <div class="card-hdr" style="margin:-18px -18px 16px;border-radius:var(--radius) var(--radius) 0 0">\n      Email Settings\n    </div>\n    <div style="display:grid;gap:12px">\n      <div>\n        <label class="modal-lbl">Test Mode</label>\n        <div style="display:flex;align-items:center;gap:10px;margin-top:4px">\n          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:.9rem;font-weight:600">\n            <input type="checkbox" id="test-mode" style="width:18px;height:18px"\n              onchange="saveSettings()">\n            Send to test email instead of vendor\n          </label>\n        </div>\n        <div style="font-size:.75rem;color:var(--muted);margin-top:4px">\n          When enabled, all orders go to the test email address below regardless of vendor\n        </div>\n      </div>\n      <div>\n        <label class="modal-lbl">Test Email Address</label>\n        <input id="test-email" class="modal-inp" type="email"\n          placeholder="e.g. manager@austingrind.com"\n          oninput="saveSettings()">\n      </div>\n    </div>\n  </div>\n\n  <div class="card" style="padding:18px;margin-bottom:12px">\n    <div class="card-hdr" style="margin:-18px -18px 16px;border-radius:var(--radius) var(--radius) 0 0">\n      Vendor Email Addresses\n    </div>\n    <div id="vendor-email-list" style="display:grid;gap:10px">\n      Loading…\n    </div>\n    <button class="btn btn-primary btn-sm" style="margin-top:14px" onclick="saveSettings()">\n      💾 Save Settings\n    </button>\n  </div>\n\n  <div class="card" style="padding:18px">\n    <div class="card-hdr" style="margin:-18px -18px 16px;border-radius:var(--radius) var(--radius) 0 0">\n      CC Address\n    </div>\n    <div style="display:grid;gap:12px">\n      <div>\n        <label class="modal-lbl">Always CC</label>\n        <input id="settings-cc" class="modal-inp" type="email"\n          placeholder="e.g. lara@austingrind.com"\n          oninput="saveSettings()">\n        <div style="font-size:.75rem;color:var(--muted);margin-top:4px">\n          This address is CC'd on every order email
+  <div id="order-body"><div class="no-order">Save today's counts first, then view the order.</div></div>
+</div>
+
+<div class="panel" id="panel-history">
+  <div class="filter-bar">
+    <label>From:</label><input type="date" id="hist-from">
+    <label>To:</label><input type="date" id="hist-to">
+  </div>
+  <div class="filter-bar">
+    <label>Item:</label>
+    <input type="text" id="hist-item" placeholder="All items">
+    <button class="btn btn-primary btn-sm" onclick="loadHistory()">Load</button>
+    <button class="btn btn-sm" style="background:#555;color:#fff" onclick="downloadHistoryCSV()">⬇ CSV</button>
+  </div>
+  <div id="history-body"><div style="padding:32px;text-align:center;color:var(--muted)">Set a date range and click Load.</div></div>
+</div>
+
+<div class="panel" id="panel-catalog">
+  <div class="btn-row">
+    <button class="btn btn-success btn-sm" onclick="openAddModal()">+ Add Item</button>
+    <input type="text" id="cat-search" placeholder="Search…"
+      style="flex:1;min-width:120px;border:1.5px solid var(--border);border-radius:var(--radius);
+             padding:8px 12px;font-size:.9rem;background:var(--card);box-shadow:var(--shadow)"
+      oninput="renderCatalog()">
+    <select id="cat-cat-filter"
+      style="border:1.5px solid var(--border);border-radius:var(--radius);
+             padding:8px 10px;font-size:.85rem;background:var(--card)"
+      onchange="renderCatalog()">
+      <option value="">All categories</option>
+    </select>
+    <label style="display:flex;align-items:center;gap:5px;font-size:.82rem;
+      font-weight:600;color:var(--navy);white-space:nowrap;cursor:pointer">
+      <input type="checkbox" id="cat-show-inactive" onchange="renderCatalog()"> Inactive
+    </label>
+  </div>
+  <div id="catalog-body"><div style="padding:32px;text-align:center;color:var(--muted)">Loading catalog…</div></div>
+</div>
+
+<div id="modal-overlay">
+  <div class="modal-card">
+    <div class="modal-hdr">
+      <span id="modal-title">Add Item</span>
+      <button onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-grid">
+        <div class="full-col">
+          <label class="modal-lbl">Item Name *</label>
+          <input id="m-name" class="modal-inp" type="text">
+        </div>
+        <div class="full-col">
+          <label class="modal-lbl">Category *</label>
+          <select id="m-cat" class="modal-inp">
+            <option value="">— select —</option>
+            <option>Pastries</option><option>Bagels</option><option>Dairy</option>
+            <option>Cookies</option><option>Brownies</option>
+            <option>Cheese</option><option>Meats</option>
+          </select>
+        </div>
+        <div>
+          <label class="modal-lbl">Vendor</label>
+          <input id="m-vendor" class="modal-inp" type="text">
+        </div>
+        <div>
+          <label class="modal-lbl">SKU</label>
+          <input id="m-sku" class="modal-inp" type="text" style="font-family:monospace">
+        </div>
+        <div>
+          <label class="modal-lbl">PAR</label>
+          <input id="m-par" class="modal-inp" type="number" min="0" step="1" placeholder="0">
+        </div>
+        <div>
+          <label class="modal-lbl">Price ($)</label>
+          <input id="m-price" class="modal-inp" type="number" min="0" step="0.01" placeholder="0.00">
+        </div>
+        <div class="full-col">
+          <label class="modal-lbl">Packaging</label>
+          <input id="m-packaging" class="modal-inp" type="text" placeholder="e.g. Each, Box">
+        </div>
+        <div class="full-col" style="display:flex;align-items:center;gap:8px">
+          <input id="m-active" type="checkbox" checked style="width:18px;height:18px;cursor:pointer">
+          <label for="m-active" style="font-size:.88rem;font-weight:600;cursor:pointer">Active — appears in daily entry</label>
+        </div>
+      </div>
+      <div id="modal-err" class="modal-err"></div>
+      <div class="modal-footer">
+        <button onclick="closeModal()" class="btn btn-sm" style="background:#eee;color:#333">Cancel</button>
+        <button onclick="saveItem()" class="btn btn-primary btn-sm" id="modal-save-btn">Save Item</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SETTINGS -->
+<div class="panel" id="panel-settings">
+  <div class="card" style="padding:18px;margin-bottom:12px">
+    <div class="card-hdr" style="margin:-18px -18px 16px;border-radius:var(--radius) var(--radius) 0 0">
+      Email Settings
+    </div>
+    <div style="display:grid;gap:12px">
+      <div>
+        <label class="modal-lbl">Test Mode</label>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:4px">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:.9rem;font-weight:600">
+            <input type="checkbox" id="test-mode" style="width:18px;height:18px"
+              onchange="saveSettings()">
+            Send to test email instead of vendor
+          </label>
+        </div>
+        <div style="font-size:.75rem;color:var(--muted);margin-top:4px">
+          When enabled, all orders go to the test email address below regardless of vendor
+        </div>
+      </div>
+      <div>
+        <label class="modal-lbl">Test Email Address</label>
+        <input id="test-email" class="modal-inp" type="email"
+          placeholder="e.g. manager@austingrind.com"
+          oninput="saveSettings()">
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="padding:18px;margin-bottom:12px">
+    <div class="card-hdr" style="margin:-18px -18px 16px;border-radius:var(--radius) var(--radius) 0 0">
+      Vendor Email Addresses
+    </div>
+    <div id="vendor-email-list" style="display:grid;gap:10px">
+      Loading…
+    </div>
+    <button class="btn btn-primary btn-sm" style="margin-top:14px" onclick="saveSettings()">
+      💾 Save Settings
+    </button>
+  </div>
+
+  <div class="card" style="padding:18px">
+    <div class="card-hdr" style="margin:-18px -18px 16px;border-radius:var(--radius) var(--radius) 0 0">
+      CC Address
+    </div>
+    <div style="display:grid;gap:12px">
+      <div>
+        <label class="modal-lbl">Always CC</label>
+        <input id="settings-cc" class="modal-inp" type="email"
+          placeholder="e.g. lara@austingrind.com"
+          oninput="saveSettings()">
+        <div style="font-size:.75rem;color:var(--muted);margin-top:4px">
+          This address is CC'd on every order email
         </div>
       </div>
     </div>
@@ -1311,15 +1456,48 @@ function buildAllOrdersText() {
 
 // ── Square Inventory ────────────────────────────────────────────────────────
 
-let squareItems = [];       // raw items from Square
-let squareMappings = {};    // squareItemId -> bakeryName (saved to localStorage)
+let squareItems = [];    // raw items from Square
+let squareMappings = {}; // variationId -> bakeryName (saved to Supabase)
 
-const SQ_STORAGE_KEY = 'bk_square_mappings';
-
-function initSquareTab() {
-  // Load saved mappings
-  try { squareMappings = JSON.parse(localStorage.getItem(SQ_STORAGE_KEY)||'{}'); } catch(e) {}
+async function initSquareTab() {
+  await loadSquareMappings();
   if (squareItems.length) renderSquareTable();
+}
+
+async function loadSquareMappings() {
+  try {
+    const res = await fetch(SUPABASE_URL + '/rest/v1/square_mappings?select=variation_id,bakery_name',
+      { headers: supaHeaders() });
+    if (!res.ok) return;
+    const rows = await res.json();
+    squareMappings = {};
+    for (const row of rows) squareMappings[row.variation_id] = row.bakery_name;
+  } catch(e) { console.warn('Could not load Square mappings:', e); }
+}
+
+async function saveSquareMappings() {
+  const btn = document.getElementById('sq-save-map-btn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    // Upsert all mappings to Supabase
+    const rows = Object.entries(squareMappings)
+      .filter(([k,v]) => v && v.trim())
+      .map(([variation_id, bakery_name]) => ({ variation_id, bakery_name }));
+    const res = await fetch(SUPABASE_URL + '/rest/v1/square_mappings', {
+      method: 'POST',
+      headers: { ...supaHeaders(), 'Prefer': 'resolution=merge-duplicates' },
+      body: JSON.stringify(rows),
+    });
+    if (!res.ok) throw new Error('Save failed: ' + res.status);
+    toast('Mappings saved ✓');
+    btn.style.display = 'none';
+    updateSquareStats();
+  } catch(e) {
+    toast('⚠ Could not save mappings: ' + e.message);
+    console.error(e);
+  } finally {
+    btn.disabled = false; btn.textContent = '💾 Save Mappings';
+  }
 }
 
 function sqStatus(qty) {
@@ -1355,20 +1533,21 @@ function suggestBakeryName(squareName) {
 }
 
 function updateSquareStats() {
-  const total    = squareItems.length;
-  const mapped   = squareItems.filter(i => squareMappings[i.id] && squareMappings[i.id].trim()).length;
-  const unmapped = total - mapped;
-  // Count low/out across all variants (or parent if no variants)
+  const total = squareItems.length;
+  // Count mappings at variant level
+  let mappedVariants = 0, totalVariants = 0;
   let lowCount = 0;
   for (const item of squareItems) {
     const rows = item.variants.length ? item.variants : [item];
     for (const r of rows) {
+      totalVariants++;
+      if (squareMappings[r.id]?.trim()) mappedVariants++;
       if (r.quantity <= 5) lowCount++;
     }
   }
   document.getElementById('sq-stat-total').textContent    = total || '—';
-  document.getElementById('sq-stat-mapped').textContent   = total ? mapped : '—';
-  document.getElementById('sq-stat-unmapped').textContent = total ? unmapped : '—';
+  document.getElementById('sq-stat-mapped').textContent   = total ? mappedVariants : '—';
+  document.getElementById('sq-stat-unmapped').textContent = total ? (totalVariants - mappedVariants) : '—';
   document.getElementById('sq-stat-low').textContent      = total ? lowCount : '—';
 }
 
@@ -1386,7 +1565,9 @@ function renderSquareTable() {
     // For status filter: check any variant (or parent if no variants)
     const rows = i.variants.length ? i.variants : [i];
     const matchSt = statusF==='all' || rows.some(r => sqStatusKey(r.quantity)===statusF);
-    const isMapped = !!(squareMappings[i.id]?.trim());
+    // Check mapping at variant level
+    const allIds = i.variants.length ? i.variants.map(v=>v.id) : [i.id];
+    const isMapped = allIds.some(id => squareMappings[id]?.trim());
     const matchM  = mapF==='all' || (mapF==='mapped' && isMapped) || (mapF==='unmapped' && !isMapped);
     return matchQ && matchSt && matchM;
   });
@@ -1401,10 +1582,10 @@ function renderSquareTable() {
 
   let html = `<table class="hist-table" style="min-width:620px">
     <thead><tr>
-      <th style="min-width:180px">Square Name</th>
-      <th style="text-align:center;width:60px">Total</th>
+      <th style="min-width:180px">Square Name / Variant</th>
+      <th style="text-align:center;width:60px">Qty</th>
       <th style="text-align:center;width:100px">Status</th>
-      <th>Bakery Name (mapped)</th>
+      <th>Map to Bakery Item</th>
     </tr></thead><tbody>`;
 
   let shownCount = 0;
@@ -1412,53 +1593,60 @@ function renderSquareTable() {
     shownCount++;
     const hasVariants = item.variants.length > 0;
     const st = sqStatus(item.quantity);
-    const mapped = squareMappings[item.id] || '';
-    const collapseId = 'sq-v-' + item.id.replace(/[^a-z0-9]/gi,'_');
 
-    // Parent row — group header, always expanded
+    // Parent row — group header only, no mapping dropdown
     html += `<tr style="background:var(--cat-bg)">
-      <td style="font-weight:700;font-size:.87rem;color:var(--cat-txt);padding:8px 10px">
+      <td style="font-weight:700;font-size:.87rem;color:var(--cat-txt);padding:8px 10px" colspan="${hasVariants ? 1 : 1}">
         ${hasVariants ? `<span style="font-size:.7rem;margin-right:5px;color:var(--muted)">▼</span>` : ''}
         ${item.name}
         ${hasVariants ? `<span style="font-size:.7rem;font-weight:600;color:var(--muted);margin-left:4px">(${item.variants.length} variants)</span>` : ''}
       </td>
-      <td style="text-align:center;font-weight:700;font-variant-numeric:tabular-nums;color:var(--cat-txt)">${item.quantity}</td>
+      <td style="text-align:center;font-weight:700;color:var(--cat-txt)">${item.quantity}</td>
       <td style="text-align:center">
         <span style="display:inline-block;padding:2px 8px;border-radius:20px;font-size:.7rem;font-weight:700;${st.cls}">${st.label}</span>
       </td>
-      <td>
-        <select class="sq-map-sel" data-sq-id="${item.id}"
-          style="width:100%;border:1.5px solid var(--border);border-radius:6px;
-                 padding:5px 7px;font-size:.78rem;background:var(--card);min-height:32px;
-                 ${mapped?'border-color:var(--green);background:#f0fff4;color:var(--green);font-weight:700':''}"
-          onchange="onSquareMappingChange(this)" onclick="event.stopPropagation()">
-          ${bakeryNames.map(n=>`<option value="${n==='— no mapping —'?'':n}"${(mapped?(mapped===n):(n==='— no mapping —'))?'selected':''}>${n}</option>`).join('')}
-        </select>
+      <td style="font-size:.75rem;color:var(--muted);padding:6px 10px;font-style:italic">
+        ${hasVariants ? 'Map each variant below' : '—'}
       </td>
     </tr>`;
 
-    // Variant sub-rows
-    if (hasVariants) {
-      // Filter variants if search is active
-      const visibleVariants = q
-        ? item.variants.filter(v => v.name.toLowerCase().includes(q) || !q)
-        : item.variants;
+    // Variant sub-rows — mapping dropdown on each variant
+    const visibleVariants = hasVariants
+      ? (q ? item.variants.filter(v => v.name.toLowerCase().includes(q)) : item.variants)
+      : [];
 
-      for (const v of visibleVariants) {
-        const vst = sqStatus(v.quantity);
-        html += `<tr class="${collapseId}" style="background:#fff">
-          <td style="padding:6px 10px 6px 32px;font-size:.82rem;color:var(--text)">
-            <span style="color:var(--muted);margin-right:6px">↳</span>${v.name}
-            ${v.sku ? `<span style="font-size:.67rem;color:var(--muted);font-family:monospace;margin-left:5px">${v.sku}</span>` : ''}
-          </td>
-          <td style="text-align:center;font-weight:700;font-size:.9rem;font-variant-numeric:tabular-nums;
-            color:${v.quantity<=0?'var(--red)':v.quantity<=5?'var(--orange)':'var(--navy)'}">${v.quantity}</td>
-          <td style="text-align:center">
-            <span style="display:inline-block;padding:2px 8px;border-radius:20px;font-size:.68rem;font-weight:700;${vst.cls}">${vst.label}</span>
-          </td>
-          <td style="font-size:.75rem;color:var(--muted);padding:6px 10px">—</td>
-        </tr>`;
-      }
+    for (const v of visibleVariants) {
+      const vst = sqStatus(v.quantity);
+      const vmapped = squareMappings[v.id] || '';
+      const qty_color = v.quantity<=0?'var(--red)':v.quantity<=5?'var(--orange)':'var(--navy)';
+      html += `<tr style="background:#fff;border-bottom:1px solid var(--border)">
+        <td style="padding:6px 10px 6px 28px;font-size:.82rem;color:var(--text)">
+          <span style="color:var(--muted);margin-right:6px">↳</span>${v.name}
+          ${v.sku ? `<span style="font-size:.67rem;color:var(--muted);font-family:monospace;margin-left:5px">${v.sku}</span>` : ''}
+        </td>
+        <td style="text-align:center;font-weight:700;font-size:.9rem;color:${qty_color}">${v.quantity}</td>
+        <td style="text-align:center">
+          <span style="display:inline-block;padding:2px 8px;border-radius:20px;font-size:.68rem;font-weight:700;${vst.cls}">${vst.label}</span>
+        </td>
+        <td>
+          <select class="sq-map-sel" data-sq-id="${v.id}"
+            style="width:100%;border:1.5px solid var(--border);border-radius:6px;
+                   padding:5px 7px;font-size:.78rem;background:var(--card);min-height:30px;
+                   ${vmapped?'border-color:var(--green);background:#f0fff4;color:var(--green);font-weight:700':''}"
+            onchange="onSquareMappingChange(this)">
+            ${bakeryNames.map(n=>`<option value="${n==='— no mapping —'?'':n}"${(vmapped?(vmapped===n):(n==='— no mapping —'))?'selected':''}>${n}</option>`).join('')}
+          </select>
+        </td>
+      </tr>`;
+    }
+
+    // No-variant items get their own mapping row
+    if (!hasVariants) {
+      const mapped = squareMappings[item.id] || '';
+      html += `<tr style="background:#fff;border-bottom:1px solid var(--border);display:none">
+        <td colspan="4"></td>
+      </tr>`;
+      // Overwrite parent row mapping cell - handled above via colspan
     }
   }
 
@@ -1489,16 +1677,7 @@ function onSquareMappingChange(sel) {
   document.getElementById('sq-save-map-btn').style.display = '';
 }
 
-function saveSquareMappings() {
-  try {
-    localStorage.setItem(SQ_STORAGE_KEY, JSON.stringify(squareMappings));
-    toast('Mappings saved ✓');
-    document.getElementById('sq-save-map-btn').style.display = 'none';
-    updateSquareStats();
-  } catch(e) {
-    toast('⚠ Could not save mappings');
-  }
-}
+// saveSquareMappings defined above in initSquareTab section
 
 async function squareSyncInventory() {
   const btn = document.getElementById('sq-sync-btn');
@@ -1538,11 +1717,23 @@ async function squareSyncInventory() {
       })) : []
     }));
 
-    // Auto-suggest mappings for unmapped items
+    // Auto-suggest mappings at variant level for unmapped variants
     for (const item of squareItems) {
-      if (!squareMappings[item.id]) {
-        const suggestion = suggestBakeryName(item.name);
-        if (suggestion) squareMappings[item.id] = suggestion;
+      // For items with variants, suggest on each variant
+      if (item.variants.length) {
+        for (const v of item.variants) {
+          if (!squareMappings[v.id]) {
+            // Try variant name first, fall back to parent name
+            const suggestion = suggestBakeryName(v.name) || suggestBakeryName(item.name);
+            if (suggestion) squareMappings[v.id] = suggestion;
+          }
+        }
+      } else {
+        // No variants — suggest on parent item ID
+        if (!squareMappings[item.id]) {
+          const suggestion = suggestBakeryName(item.name);
+          if (suggestion) squareMappings[item.id] = suggestion;
+        }
       }
     }
 

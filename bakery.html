@@ -1522,7 +1522,7 @@ async function squareSyncInventory() {
   try {
     // PROXY_URL is set to your Cloudflare Worker URL after deployment
     // e.g. https://austin-grind-proxy.YOUR-SUBDOMAIN.workers.dev/v1/messages
-    const PROXY_URL = window.ANTHROPIC_PROXY_URL || 'https://YOUR-WORKER.workers.dev/v1/messages';
+    const PROXY_URL = window.ANTHROPIC_PROXY_URL || 'https://austin-grind-proxy.mak-7b6.workers.dev/v1/messages';
 
     const res = await fetch(PROXY_URL, {
       method: 'POST',

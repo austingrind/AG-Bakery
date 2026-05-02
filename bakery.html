@@ -623,6 +623,8 @@ function showTab(tab) {
   document.getElementById('panel-'+tab).classList.add('active');
   const idx = ['daily','order','history','catalog','settings','square'].indexOf(tab);
   document.querySelectorAll('#tab-bar button')[idx].classList.add('active');
+  // Only show the bottom save bar on Daily Entry tab
+  document.getElementById('save-bar').style.display = tab === 'daily' ? '' : 'none';
   if (tab==='order')   renderOrder();
   if (tab==='catalog') loadCatalog();
   if (tab==='square')  initSquareTab();

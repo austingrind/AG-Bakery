@@ -29,10 +29,11 @@ jobs:
         run: |
           echo "window.SUPABASE_URL=\"${{ secrets.SUPABASE_URL }}\";" > config.js
           echo "window.SUPABASE_KEY=\"${{ secrets.SUPABASE_KEY }}\";" >> config.js
+          rm -f .gitignore
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: .
-          exclude_assets: '.gitignore,.github,README.md,Index.html'
+          exclude_assets: '.github,README.md,Index.html'

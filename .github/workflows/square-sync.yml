@@ -1,0 +1,67 @@
+name: Daily Square Inventory Snapshot
+
+on:
+  schedule:
+    # 7:00 AM CT — CDT is UTC-5 (12:00 UTC), CST is UTC-6 (13:00 UTC)
+    # Two entries handle the daylight saving transition:
+    - cron: '0 12 * * *'
+    - cron: '0 13 * * *'
+  workflow_dispatch:
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch Square inventory
+        run: |
+          curl -sf --max-time 30 \
+            'https://austin-grind-proxy.mak-7b6.workers.dev/inventory' \
+            -o /tmp/square_inventory.json
+          echo "Fetched $(python3 -c "import json; d=json.load(open('/tmp/square_inventory.json')); print(len(d),'items')")"
+
+      - name: Build and upsert snapshot rows
+        run: |
+          python3 - <<'PYEOF'
+          import json, urllib.request, datetime, os, zoneinfo
+
+          tz = zoneinfo.ZoneInfo('America/Chicago')
+          today = datetime.datetime.now(tz).strftime('%Y-%m-%d')
+          print(f"Snapshot date (CT): {today}")
+
+          with open('/tmp/square_inventory.json') as f:
+              inventory = json.load(f)
+
+          rows = []
+          for item in inventory:
+              for v in item.get('variants', []):
+                  vid = str(v.get('id', ''))
+                  qty = v.get('quantity', 0)
+                  if vid:
+                      rows.append({
+                          'snapshot_date': today,
+                          'variation_id':  vid,
+                          'quantity':      max(0, int(qty) if qty is not None else 0)
+                      })
+
+          print(f"Upserting {len(rows)} rows")
+
+          data = json.dumps(rows).encode()
+          req = urllib.request.Request(
+              os.environ['SUPABASE_URL'] + '/rest/v1/square_opening_inventory',
+              data=data,
+              headers={
+                  'Content-Type':  'application/json',
+                  'apikey':        os.environ['SUPABASE_KEY'],
+                  'Authorization': 'Bearer ' + os.environ['SUPABASE_KEY'],
+                  'Prefer':        'resolution=merge-duplicates,return=minimal',
+              },
+              method='POST'
+          )
+          with urllib.request.urlopen(req) as r:
+              print(f"Supabase status: {r.status}")
+
+          print("Done.")
+          PYEOF
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}

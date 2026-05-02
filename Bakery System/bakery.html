@@ -536,6 +536,7 @@ const MANAGER_TABS = new Set(['history','catalog','settings','square']);
 let userRole = null, catalogData = [];
 let dailyData = {}, priorData = {}, priorOrderData = {}, historyData = {};
 let orderItems = [], histData = [];
+let squareOpeningData = {}; // catalog_item_id -> Square on-hand quantity for today
 
 function esc(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -657,17 +658,38 @@ async function loadCatalogAndDaily() {
   if (!date) return;
   const lb = new Date(date+'T12:00:00'); lb.setDate(lb.getDate()-60);
   try {
-    const [catRes, todayRes, priorRes] = await Promise.all([
+    const [catRes, todayRes, priorRes, mapRes, sqRes] = await Promise.all([
       fetch(`${SUPABASE_URL}/rest/v1/bakery_catalog?active=eq.true&order=sort_order.asc,item_order.asc&limit=200`,
         {headers:supaHeaders()}),
       fetch(`${SUPABASE_URL}/rest/v1/bakery_daily?record_date=eq.${date}&limit=300`,
         {headers:supaHeaders()}),
       fetch(`${SUPABASE_URL}/rest/v1/bakery_daily?record_date=lt.${date}&record_date=gte.${lb.toISOString().split('T')[0]}&order=record_date.desc&limit=300`,
         {headers:supaHeaders()}),
+      fetch(`${SUPABASE_URL}/rest/v1/square_mappings?select=variation_id,bakery_name`,
+        {headers:supaHeaders()}),
+      fetch(`${SUPABASE_URL}/rest/v1/square_opening_inventory?snapshot_date=eq.${date}&select=variation_id,quantity`,
+        {headers:supaHeaders()}),
     ]);
     catalogData = await catRes.json();
     const todayRecords = await todayRes.json();
     const priorRecords = await priorRes.json();
+
+    // Build squareOpeningData: catalog_item_id -> on-hand quantity from Square snapshot
+    squareOpeningData = {};
+    try {
+      const mapRows = await mapRes.json();
+      const sqRows  = await sqRes.json();
+      if (Array.isArray(mapRows) && Array.isArray(sqRows) && sqRows.length) {
+        const sqQty = {};
+        for (const r of sqRows) sqQty[r.variation_id] = r.quantity;
+        for (const m of mapRows) {
+          const qty = sqQty[m.variation_id];
+          if (qty === undefined) continue;
+          const item = catalogData.find(i => i.name === m.bakery_name);
+          if (item) squareOpeningData[item.id] = qty;
+        }
+      }
+    } catch(e) { console.warn('Square opening data unavailable:', e); }
 
     priorData = {}; priorOrderData = {}; historyData = {};
     const priorDate = priorRecords.length ? priorRecords[0].record_date.substring(0,10) : null;
@@ -703,7 +725,8 @@ function getItemValues(item) {
   const prior  = priorData[id] ?? 0;
   const amtRec = d.amt_received !== null && d.amt_received !== undefined
     ? d.amt_received : (priorOrderData[id] ?? 0);
-  const open    = prior + amtRec;
+  const sqOpen  = squareOpeningData[id];
+  const open    = sqOpen !== undefined ? sqOpen : prior + amtRec;
   const samp    = d.sample_count || 0;
   const thrw    = d.throwaway    || 0;
   const closing = d.closing_inventory !== null && d.closing_inventory !== undefined
@@ -721,6 +744,10 @@ function renderDailyForm(priorDate) {
   const priorLbl = priorDate
     ? new Date(priorDate+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})
     : 'Prior';
+  const sqCount = Object.keys(squareOpeningData).length;
+  const openHdr = sqCount
+    ? `Opening<br><span style="font-weight:400;font-size:.6rem;color:#27ae60">▲ Square (${sqCount})</span>`
+    : 'Opening';
 
   const groups = {}, groupOrder = [];
   for (const item of catalogData) {
@@ -735,7 +762,7 @@ function renderDailyForm(priorDate) {
     <th>PAR</th>
     <th>Prior<br><span style="font-weight:400;opacity:.8;font-size:.6rem">${priorLbl}</span></th>
     <th>Amt Rec'd</th>
-    <th>Opening</th>
+    <th>${openHdr}</th>
     <th>Sample</th>
     <th>Throwaway</th>
     <th>Closing ✏️</th>

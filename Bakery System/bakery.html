@@ -1129,9 +1129,17 @@ async function loadCatalog() {
   try {
     const res=await fetch(`${SUPABASE_URL}/rest/v1/bakery_catalog?order=sort_order.asc,item_order.asc&limit=500`,
       {headers:supaHeaders()});
-    catalogData=await res.json();
+    const data=await res.json();
+    console.log('[loadCatalog] status='+res.status+' rows='+(Array.isArray(data)?data.length:JSON.stringify(data)));
+    if (!res.ok) {
+      document.getElementById('catalog-body').innerHTML=
+        `<div style="padding:32px;text-align:center;color:var(--red)">Catalog error ${res.status}: ${data.message||data.hint||'unknown'}</div>`;
+      return;
+    }
+    catalogData=data;
     renderCatalog();
   } catch(e) {
+    console.error('[loadCatalog] fetch error:', e);
     document.getElementById('catalog-body').innerHTML=
       '<div style="padding:32px;text-align:center;color:var(--red)">Error loading catalog.</div>';
   }

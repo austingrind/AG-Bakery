@@ -1,0 +1,14 @@
+# Never commit credentials to GitHub
+config.js
+
+# Binary and large files
+*.xlsm
+*.zip
+*.pdf
+*.docx
+
+# Backup specs
+Bakery System/Backup/
+
+# Local tooling
+.claude/

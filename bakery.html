@@ -1521,8 +1521,8 @@ async function squareSyncInventory() {
 
   try {
     // PROXY_URL is set to your Cloudflare Worker URL after deployment
-    // e.g. https://austin-grind-proxy.workers.dev/v1/messages
-  const PROXY_URL = window.ANTHROPIC_PROXY_URL || 'https://austin-grind-proxy.mak-7b6.workers.dev/v1/messages';
+    // e.g. https://austin-grind-proxy.YOUR-SUBDOMAIN.workers.dev/v1/messages
+    const PROXY_URL = window.ANTHROPIC_PROXY_URL || 'https://austin-grind-proxy.mak-7b6.workers.dev/v1/messages';
 
     const res = await fetch(PROXY_URL, {
       method: 'POST',
@@ -1542,11 +1542,36 @@ Focus on bakery/food items only. If you cannot connect to Square or get no real 
     });
 
     const data = await res.json();
-    const textBlock = (data.content||[]).find(b => b.type==='text');
-    if (!textBlock) throw new Error('No text response from API');
+    if (data.error) throw new Error('API error: ' + (data.error.message || JSON.stringify(data.error)));
 
-    const raw = textBlock.text.replace(/```json|```/g,'').trim();
-    let parsed = JSON.parse(raw);
+    const blocks = data.content || [];
+
+    // Try text block first (normal response)
+    let raw = '';
+    const textBlock = blocks.find(b => b.type === 'text' && b.text && b.text.trim().length > 2);
+    if (textBlock) {
+      raw = textBlock.text;
+    } else {
+      // Fallback: extract JSON from mcp_tool_result blocks
+      for (const block of blocks) {
+        const inner = block.content || [];
+        for (const c of inner) {
+          if (c.text && c.text.includes('[')) { raw = c.text; break; }
+        }
+        if (raw) break;
+      }
+    }
+
+    if (!raw) throw new Error('No data in response. Block types: ' + blocks.map(b=>b.type).join(', '));
+
+    raw = raw.replace(/```json|```/gi, '').trim();
+    const startIdx = raw.indexOf('[');
+    if (startIdx === -1) throw new Error('No JSON array in response');
+    raw = raw.slice(startIdx);
+
+    let parsed;
+    try { parsed = JSON.parse(raw); }
+    catch(pe) { throw new Error('JSON parse failed: ' + pe.message); }
     if (!Array.isArray(parsed)) throw new Error('Response was not an array');
 
     squareItems = parsed.map(i => ({

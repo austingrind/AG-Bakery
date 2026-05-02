@@ -1594,9 +1594,12 @@ function renderSquareTable() {
     const hasVariants = item.variants.length > 0;
     const st = sqStatus(item.quantity);
 
-    // Parent row — group header only, no mapping dropdown
+    // Parent row
+    // — if has variants: group header only, no dropdown (map each variant below)
+    // — if no variants: show mapping dropdown directly on this row (e.g. Biscotti)
+    const parentMapped = !hasVariants ? (squareMappings[item.id] || '') : '';
     html += `<tr style="background:var(--cat-bg)">
-      <td style="font-weight:700;font-size:.87rem;color:var(--cat-txt);padding:8px 10px" colspan="${hasVariants ? 1 : 1}">
+      <td style="font-weight:700;font-size:.87rem;color:var(--cat-txt);padding:8px 10px">
         ${hasVariants ? `<span style="font-size:.7rem;margin-right:5px;color:var(--muted)">▼</span>` : ''}
         ${item.name}
         ${hasVariants ? `<span style="font-size:.7rem;font-weight:600;color:var(--muted);margin-left:4px">(${item.variants.length} variants)</span>` : ''}
@@ -1605,8 +1608,17 @@ function renderSquareTable() {
       <td style="text-align:center">
         <span style="display:inline-block;padding:2px 8px;border-radius:20px;font-size:.7rem;font-weight:700;${st.cls}">${st.label}</span>
       </td>
-      <td style="font-size:.75rem;color:var(--muted);padding:6px 10px;font-style:italic">
-        ${hasVariants ? 'Map each variant below' : '—'}
+      <td>
+        ${hasVariants
+          ? `<span style="font-size:.75rem;color:var(--muted);font-style:italic">Map each variant below</span>`
+          : `<select class="sq-map-sel" data-sq-id="${item.id}"
+              style="width:100%;border:1.5px solid var(--border);border-radius:6px;
+                     padding:5px 7px;font-size:.78rem;background:var(--card);min-height:30px;
+                     ${parentMapped?'border-color:var(--green);background:#f0fff4;color:var(--green);font-weight:700':''}"
+              onchange="onSquareMappingChange(this)">
+              ${bakeryNames.map(n=>`<option value="${n==='— no mapping —'?'':n}"${(parentMapped?(parentMapped===n):(n==='— no mapping —'))?'selected':''}>${n}</option>`).join('')}
+            </select>`
+        }
       </td>
     </tr>`;
 
@@ -1638,15 +1650,6 @@ function renderSquareTable() {
           </select>
         </td>
       </tr>`;
-    }
-
-    // No-variant items get their own mapping row
-    if (!hasVariants) {
-      const mapped = squareMappings[item.id] || '';
-      html += `<tr style="background:#fff;border-bottom:1px solid var(--border);display:none">
-        <td colspan="4"></td>
-      </tr>`;
-      // Overwrite parent row mapping cell - handled above via colspan
     }
   }
 
@@ -1717,25 +1720,8 @@ async function squareSyncInventory() {
       })) : []
     }));
 
-    // Auto-suggest mappings at variant level for unmapped variants
-    for (const item of squareItems) {
-      // For items with variants, suggest on each variant
-      if (item.variants.length) {
-        for (const v of item.variants) {
-          if (!squareMappings[v.id]) {
-            // Try variant name first, fall back to parent name
-            const suggestion = suggestBakeryName(v.name) || suggestBakeryName(item.name);
-            if (suggestion) squareMappings[v.id] = suggestion;
-          }
-        }
-      } else {
-        // No variants — suggest on parent item ID
-        if (!squareMappings[item.id]) {
-          const suggestion = suggestBakeryName(item.name);
-          if (suggestion) squareMappings[item.id] = suggestion;
-        }
-      }
-    }
+    // Load saved mappings from Supabase — these always take precedence, no auto-suggest
+    await loadSquareMappings();
 
     const now = new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
     document.getElementById('sq-last-sync').textContent = `Last synced: ${now}`;

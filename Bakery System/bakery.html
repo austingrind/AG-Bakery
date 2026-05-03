@@ -144,13 +144,17 @@ header{background:var(--navy);color:#fff;padding:12px 16px;position:sticky;top:0
 .hist-table td{padding:7px 10px;border-bottom:1px solid var(--border);white-space:nowrap}
 .hist-table tr:last-child td{border-bottom:none}
 .hist-table tr:hover td{background:#f0f4f8}
-.cat-col-hdr{display:grid;grid-template-columns:1fr 60px 90px 50px 55px 58px 36px 44px;
+.cat-col-hdr{display:grid;
   padding:6px 10px 6px 12px;font-size:.68rem;font-weight:700;
   color:var(--muted);text-transform:uppercase;letter-spacing:.4px;
   background:var(--card);border-bottom:1px solid var(--border)}
-.cat-item-row{display:grid;grid-template-columns:1fr 60px 90px 50px 55px 58px 36px 44px;
+.cat-item-row{display:grid;
   padding:7px 10px 7px 12px;border-bottom:1px solid var(--border);
   font-size:.83rem;align-items:center}
+.order-day-banner{display:flex;align-items:center;gap:8px;padding:9px 14px;
+  border-radius:var(--radius);margin-bottom:10px;font-size:.82rem;font-weight:600}
+.order-day-banner.is-order-day{background:#f0fff4;color:var(--green);border:1.5px solid #a9dfbf}
+.order-day-banner.not-order-day{background:#fef9e7;color:#b07d00;border:1.5px solid #f9e4b7}
 .cat-item-row:last-child{border-bottom:none}
 .cat-item-row:nth-child(odd){background:#f7fafc}
 .cat-item-row.inactive{opacity:.42}
@@ -380,6 +384,10 @@ header{background:var(--navy);color:#fff;padding:12px 16px;position:sticky;top:0
           <label for="m-active" style="font-size:.88rem;font-weight:600;cursor:pointer">Active — appears in daily entry</label>
         </div>
       </div>
+      <div id="day-par-section" style="display:none">
+        <div class="modal-lbl" style="margin-bottom:8px">PAR by Order Day <span style="font-weight:400;text-transform:none;font-size:.72rem;color:var(--muted)">(leave blank to use catalog default PAR)</span></div>
+        <div id="day-par-inputs" style="display:grid;grid-template-columns:1fr 1fr;gap:8px"></div>
+      </div>
       <div id="modal-err" class="modal-err"></div>
       <div class="modal-footer">
         <button onclick="closeModal()" class="btn btn-sm" style="background:#eee;color:#333">Cancel</button>
@@ -445,6 +453,20 @@ header{background:var(--navy);color:#fff;padding:12px 16px;position:sticky;top:0
         </div>
       </div>
     </div>
+  </div>
+
+  <div class="card" style="padding:18px;margin-top:12px">
+    <div class="card-hdr" style="margin:-18px -18px 16px;border-radius:var(--radius) var(--radius) 0 0">
+      Order Schedule
+    </div>
+    <div style="font-size:.78rem;color:var(--muted);margin-bottom:14px">
+      Select which days of the week orders are placed. On order days, the app auto-calculates
+      order quantities (PAR − Closing) and switches to the Order tab after saving.
+    </div>
+    <div id="order-schedule-grid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:14px">
+      <div style="color:var(--muted);font-size:.8rem">Loading…</div>
+    </div>
+    <button class="btn btn-primary btn-sm" onclick="saveOrderSchedule()">💾 Save Schedule</button>
   </div>
 </div>
 
@@ -537,6 +559,10 @@ let userRole = null, catalogData = [];
 let dailyData = {}, priorData = {}, priorOrderData = {}, historyData = {};
 let orderItems = [], histData = [];
 let squareOpeningData = {}; // catalog_item_id -> Square on-hand quantity for today
+let orderDays = new Set();      // Set of day_of_week (0=Sun…6=Sat) that are order days
+let dayParOverrides = {};        // item_id -> {dow: par} — per-day PAR overrides
+let orderScheduleLoaded = false; // true once order_schedule table has been fetched
+let currentEntryDow = new Date().getDay(); // DOW of the entry date currently selected
 
 function esc(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -658,7 +684,7 @@ async function loadCatalogAndDaily() {
   if (!date) return;
   const lb = new Date(date+'T12:00:00'); lb.setDate(lb.getDate()-60);
   try {
-    const [catRes, todayRes, priorRes, mapRes, sqRes] = await Promise.all([
+    const [catRes, todayRes, priorRes, mapRes, sqRes, schedRes, dayParRes] = await Promise.all([
       fetch(`${SUPABASE_URL}/rest/v1/bakery_catalog?active=eq.true&order=sort_order.asc,item_order.asc&limit=200`,
         {headers:supaHeaders()}),
       fetch(`${SUPABASE_URL}/rest/v1/bakery_daily?record_date=eq.${date}&limit=300`,
@@ -669,6 +695,8 @@ async function loadCatalogAndDaily() {
         {headers:supaHeaders()}),
       fetch(`${SUPABASE_URL}/rest/v1/square_opening_inventory?snapshot_date=eq.${date}&select=variation_id,quantity`,
         {headers:supaHeaders()}),
+      fetch(`${SUPABASE_URL}/rest/v1/order_schedule`, {headers:supaHeaders()}),
+      fetch(`${SUPABASE_URL}/rest/v1/catalog_day_par`, {headers:supaHeaders()}),
     ]);
     catalogData = await catRes.json();
     const todayRecords = await todayRes.json();
@@ -690,6 +718,24 @@ async function loadCatalogAndDaily() {
         }
       }
     } catch(e) { console.warn('Square opening data unavailable:', e); }
+
+    try {
+      const schedRows = await schedRes.json();
+      if (Array.isArray(schedRows)) {
+        orderDays = new Set(schedRows.filter(r=>r.is_order_day).map(r=>r.day_of_week));
+        orderScheduleLoaded = true;
+      }
+    } catch(e) { console.warn('Order schedule unavailable:', e); }
+    try {
+      const dpRows = await dayParRes.json();
+      if (Array.isArray(dpRows)) {
+        dayParOverrides = {};
+        for (const r of dpRows) {
+          if (!dayParOverrides[r.item_id]) dayParOverrides[r.item_id] = {};
+          dayParOverrides[r.item_id][r.day_of_week] = r.par;
+        }
+      }
+    } catch(e) { console.warn('Day PAR overrides unavailable:', e); }
 
     priorData = {}; priorOrderData = {}; historyData = {};
     const priorDate = priorRecords.length ? priorRecords[0].record_date.substring(0,10) : null;
@@ -720,8 +766,11 @@ async function loadCatalogAndDaily() {
 }
 
 function getItemValues(item) {
-  const id = parseInt(item.id);
-  const d = dailyData[id] || {};
+  const id  = parseInt(item.id);
+  const d   = dailyData[id] || {};
+  const par = (dayParOverrides[id]?.[currentEntryDow] ?? item.par) || 0;
+  const isOrderDay = !orderScheduleLoaded || orderDays.has(currentEntryDow);
+
   const prior  = priorData[id] ?? 0;
   const amtRec = d.amt_received !== null && d.amt_received !== undefined
     ? d.amt_received : (priorOrderData[id] ?? 0);
@@ -732,18 +781,20 @@ function getItemValues(item) {
   const closing = d.closing_inventory !== null && d.closing_inventory !== undefined
     ? d.closing_inventory : 0;
   const used    = Math.max(open - closing, 0);
-  const autoOrd = item.par > 0 ? Math.max(item.par - closing, 0) : 0;
+  const autoOrd = isOrderDay ? Math.max(par - closing, 0) : 0;
   const orderVal = d.order_qty !== null && d.order_qty !== undefined ? d.order_qty : autoOrd;
-  const isOv     = d.order_qty !== null && d.order_qty !== undefined && d.order_qty !== autoOrd;
-  const closeLow = closing < item.par && item.par > 0;
+  const isOv    = isOrderDay && d.order_qty !== null && d.order_qty !== undefined && d.order_qty !== autoOrd;
+  const closeLow = closing < par && par > 0;
   const hasEntry = dailyData[id] !== undefined;
-  return {d, prior, amtRec, open, samp, thrw, closing, used, autoOrd, orderVal, isOv, closeLow, hasEntry};
+  return {d, prior, amtRec, open, samp, thrw, closing, used, par, autoOrd, orderVal, isOv, closeLow, hasEntry, isOrderDay};
 }
 
 function renderDailyForm(priorDate) {
-  const priorLbl = priorDate
-    ? new Date(priorDate+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})
-    : 'Prior';
+  const dateStr = document.getElementById('entry-date').value;
+  currentEntryDow = dateStr ? new Date(dateStr+'T12:00:00').getDay() : new Date().getDay();
+  const isOrderDay = !orderScheduleLoaded || orderDays.has(currentEntryDow);
+
+  const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   const sqCount = Object.keys(squareOpeningData).length;
   const openHdr = sqCount
     ? `Opening<br><span style="font-weight:400;font-size:.6rem;color:#27ae60">▲ Square (${sqCount})</span>`
@@ -755,27 +806,32 @@ function renderDailyForm(priorDate) {
     groups[item.category].push(item);
   }
 
-  let mobileHtml = '', desktopHtml = '';
+  const colCount = isOrderDay ? 8 : 7;
+  const bannerCls = isOrderDay ? 'order-day-banner is-order-day' : 'order-day-banner not-order-day';
+  const bannerTxt = isOrderDay
+    ? `✓ Order Day — ${DAY_NAMES[currentEntryDow]}. Order quantities are auto-calculated on save.`
+    : `${DAY_NAMES[currentEntryDow]} — Not an order day. Inventory will be saved without generating an order.`;
+  const bannerHtml = `<div class="${bannerCls}">${bannerTxt}</div>`;
+
+  let mobileHtml = '';
+  let desktopHtml = '';
 
   desktopHtml += `<table class="desktop-table"><thead><tr>
     <th style="text-align:left">Item</th>
     <th>PAR</th>
-    <th>Prior<br><span style="font-weight:400;opacity:.8;font-size:.6rem">${priorLbl}</span></th>
-    <th>Amt Rec'd</th>
     <th>${openHdr}</th>
     <th>Sample</th>
     <th>Throwaway</th>
     <th>Closing ✏️</th>
     <th>Used</th>
-    <th style="background:#1a4a2c">Order</th>
+    ${isOrderDay ? '<th style="background:#1a4a2c">Order</th>' : ''}
   </tr></thead><tbody>`;
 
   let enteredCount = 0;
   for (const cat of groupOrder) {
-    desktopHtml += `<tr class="cat-row"><td colspan="10">${esc(cat)}</td></tr>`;
-    // no mobile category dividers — filter dropdown handles this
+    desktopHtml += `<tr class="cat-row"><td colspan="${colCount}">${esc(cat)}</td></tr>`;
     for (const item of groups[cat]) {
-      const {d,prior,amtRec,open,samp,thrw,closing,used,autoOrd,orderVal,isOv,closeLow,hasEntry} = getItemValues(item);
+      const {d,open,samp,thrw,closing,used,par,autoOrd,orderVal,isOv,closeLow,hasEntry} = getItemValues(item);
       if (hasEntry) enteredCount++;
       const savedClose = d.closing_inventory !== null && d.closing_inventory !== undefined ? d.closing_inventory : '';
 
@@ -784,9 +840,7 @@ function renderDailyForm(priorDate) {
           <div style="font-weight:600;font-size:.83rem">${esc(item.name)}</div>
           ${item.sku?`<div style="font-size:.65rem;color:var(--muted);font-family:monospace">${esc(item.sku)}</div>`:''}
         </td>
-        <td class="ro" style="font-weight:700;color:var(--navy)">${item.par||'—'}</td>
-        <td class="ro">${prior}</td>
-        <td class="ro" style="font-weight:600;color:var(--navy)">${amtRec}</td>
+        <td class="ro" style="font-weight:700;color:var(--navy)">${par||'—'}</td>
         <td class="calc">${open}</td>
         <td style="text-align:center">
           <input class="d-inp ${samp?'filled':''}" type="number" min="0" step="1"
@@ -802,19 +856,18 @@ function renderDailyForm(priorDate) {
         </td>
         <td style="text-align:center">
           <input class="d-inp ${hasEntry?'filled':''} ${closeLow?'low':''}" type="number" min="0" step="1"
-            value="${savedClose}"
-            placeholder="${closing}"
+            value="${savedClose}" placeholder="${closing}"
             data-field="closing_inventory" data-item="${item.id}"
             oninput="onEntryInput(this)" onkeydown="handleKey(event,this)"
             style="${closeLow?'border-color:var(--red)!important':''}">
         </td>
         <td class="calc used" id="used-${item.id}">${used}</td>
-        <td style="text-align:center">
+        ${isOrderDay ? `<td style="text-align:center">
           <input class="d-inp order ${isOv?'ov':''}" type="number" min="0" step="1"
             value="${orderVal||''}" placeholder="${autoOrd||'0'}"
             data-field="order_qty" data-item="${item.id}" data-auto="${autoOrd}"
             oninput="onOrderInput(this)" onkeydown="handleKey(event,this)">
-        </td>
+        </td>` : ''}
       </tr>`;
 
       mobileHtml += `<div class="item-card" data-item-id="${item.id}">
@@ -823,18 +876,10 @@ function renderDailyForm(priorDate) {
             <div class="item-card-name">${esc(item.name)}</div>
             ${item.sku?`<div class="item-card-sku">${esc(item.sku)}</div>`:''}
           </div>
-          <div class="item-card-par">PAR: ${item.par||'—'}</div>
+          <div class="item-card-par">PAR: ${par||'—'}</div>
         </div>
         <div class="item-card-body">
           <div class="field-grid">
-            <div class="field-group">
-              <div class="field-label">Prior (${priorLbl})</div>
-              <div class="field-value">${prior}</div>
-            </div>
-            <div class="field-group">
-              <div class="field-label">Amt Received</div>
-              <div class="field-value" style="color:var(--navy)">${amtRec}</div>
-            </div>
             <div class="field-group">
               <div class="field-label">Opening Inv</div>
               <div class="field-value">${open}</div>
@@ -856,8 +901,7 @@ function renderDailyForm(priorDate) {
             <div class="field-group">
               <div class="field-label">Closing ✏️</div>
               <input class="entry-input ${hasEntry?'filled':''}" type="number" min="0" step="1"
-                inputmode="numeric"
-                value="${savedClose}" placeholder="${closing}"
+                inputmode="numeric" value="${savedClose}" placeholder="${closing}"
                 data-field="closing_inventory" data-item="${item.id}"
                 oninput="onEntryInput(this)"
                 style="${closeLow?'border-color:var(--red)!important':''}">
@@ -866,21 +910,21 @@ function renderDailyForm(priorDate) {
               <div class="field-label">Amt Used</div>
               <div class="field-value used" id="used-m-${item.id}">${used}</div>
             </div>
-            <div class="field-group">
+            ${isOrderDay ? `<div class="field-group">
               <div class="field-label" style="color:var(--green)">Order</div>
               <input class="entry-input order-input ${isOv?'order-overridden':''}" type="number" min="0" step="1"
                 inputmode="numeric"
                 value="${orderVal||''}" placeholder="${autoOrd||'0'}"
                 data-field="order_qty" data-item="${item.id}" data-auto="${autoOrd}"
                 oninput="onOrderInput(this)">
-            </div>
+            </div>` : ''}
           </div>
         </div>
       </div>`;
     }
   }
   desktopHtml += '</tbody></table>';
-  document.getElementById('daily-body').innerHTML = mobileHtml + desktopHtml;
+  document.getElementById('daily-body').innerHTML = bannerHtml + mobileHtml + desktopHtml;
   document.getElementById('entry-progress').textContent = `${enteredCount} / ${catalogData.length}`;
   populateDailyCatFilter();
   buildInputList();
@@ -926,7 +970,8 @@ function buildInputList() {
 function handleKey(e, input) {
   const idx = inputList.indexOf(input);
   if (idx === -1) return;
-  const COLS = 5;
+  const isOD = !orderScheduleLoaded || orderDays.has(currentEntryDow);
+  const COLS = isOD ? 4 : 3;
   let next = -1;
   if (e.key==='ArrowDown'||(e.key==='Enter'&&!e.shiftKey)){e.preventDefault();next=idx+COLS;}
   else if (e.key==='ArrowUp'||(e.key==='Enter'&&e.shiftKey)){e.preventDefault();next=idx-COLS;}
@@ -992,6 +1037,7 @@ async function saveDaily() {
   const staff = document.getElementById('entry-staff').value||null;
   if (!date)  {toast('Set a date first');return;}
   if (!Object.keys(dailyData).length) {toast('No entries to save');return;}
+  const savingOrderDay = !orderScheduleLoaded || orderDays.has(currentEntryDow);
   updateBadge('saving');
   const rows = [];
   for (const item of catalogData) {
@@ -1002,7 +1048,7 @@ async function saveDaily() {
       record_date:date, item_id:item.id, item_name:item.name, category:item.category,
       prior_inventory:prior, amt_received:amtRec,
       sample_count:samp, throwaway:thrw, closing_inventory:closing,
-      order_qty: d.order_qty!==null&&d.order_qty!==undefined ? d.order_qty : autoOrd,
+      order_qty: savingOrderDay ? (d.order_qty!==null&&d.order_qty!==undefined ? d.order_qty : autoOrd) : 0,
       submitted_by:staff,
     });
   }
@@ -1018,6 +1064,7 @@ async function saveDaily() {
     updateBadge('ok');
     toast(`✓ ${rows.length} records saved`);
     await loadCatalogAndDaily();
+    if (savingOrderDay) showTab('order');
   } catch(e) {
     updateBadge('err');
     toast('⚠ Save failed');
@@ -1028,6 +1075,15 @@ async function saveDaily() {
 function renderOrder() {
   const date = document.getElementById('entry-date').value;
   document.getElementById('order-date-label').textContent = date ? `Based on ${date}` : '';
+  if (orderScheduleLoaded && !orderDays.has(currentEntryDow)) {
+    const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    document.getElementById('order-body').innerHTML =
+      `<div class="no-order"><div style="font-size:2.5rem;margin-bottom:8px">📅</div>
+      <strong>Not an order day</strong>
+      <div style="margin-top:6px;color:#999">${DAY_NAMES[currentEntryDow]} is not configured as an order day.<br>
+      Inventory was saved. No order is generated.</div></div>`;
+    return;
+  }
   const pending = catalogData.filter(item => {
     const d = dailyData[item.id]; if (!d) return false;
     const {orderVal} = getItemValues(item);
@@ -1154,12 +1210,18 @@ function downloadHistoryCSV() {
 async function loadCatalog() {
   if (SUPABASE_URL==='YOUR_SUPABASE_URL'){renderCatalog();return;}
   try {
-    const [res, mapRes] = await Promise.all([
+    const fetches = [
       fetch(`${SUPABASE_URL}/rest/v1/bakery_catalog?order=sort_order.asc,item_order.asc&limit=500`,
         {headers:supaHeaders()}),
       fetch(`${SUPABASE_URL}/rest/v1/square_mappings?select=variation_id,bakery_name`,
         {headers:supaHeaders()}),
-    ]);
+    ];
+    if (!orderScheduleLoaded) {
+      fetches.push(fetch(`${SUPABASE_URL}/rest/v1/order_schedule`, {headers:supaHeaders()}));
+      fetches.push(fetch(`${SUPABASE_URL}/rest/v1/catalog_day_par`, {headers:supaHeaders()}));
+    }
+    const results = await Promise.all(fetches);
+    const [res, mapRes] = results;
     const data = await res.json();
     if (!res.ok) {
       document.getElementById('catalog-body').innerHTML=
@@ -1171,6 +1233,25 @@ async function loadCatalog() {
     if (Array.isArray(mapRows)) {
       squareMappings = {};
       for (const r of mapRows) squareMappings[r.variation_id] = r.bakery_name;
+    }
+    if (results.length > 2) {
+      try {
+        const schedRows = await results[2].json();
+        if (Array.isArray(schedRows)) {
+          orderDays = new Set(schedRows.filter(r=>r.is_order_day).map(r=>r.day_of_week));
+          orderScheduleLoaded = true;
+        }
+      } catch(e) { console.warn('Order schedule unavailable in catalog:', e); }
+      try {
+        const dpRows = await results[3].json();
+        if (Array.isArray(dpRows)) {
+          dayParOverrides = {};
+          for (const r of dpRows) {
+            if (!dayParOverrides[r.item_id]) dayParOverrides[r.item_id] = {};
+            dayParOverrides[r.item_id][r.day_of_week] = r.par;
+          }
+        }
+      } catch(e) { console.warn('Day PAR overrides unavailable in catalog:', e); }
     }
     renderCatalog();
   } catch(e) {
@@ -1199,15 +1280,29 @@ function renderCatalog() {
   }
   const mappedNames = new Set(Object.values(squareMappings));
 
+  // Build dynamic PAR columns: one per configured order day (or single default PAR if none configured)
+  const DAY_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const orderDayList = orderScheduleLoaded && orderDays.size > 0
+    ? [...orderDays].sort((a,b)=>a-b)
+    : [];
+  const showPerDayPAR = orderDayList.length > 0;
+  const parColWidths  = orderDayList.map(() => '44px').join(' ');
+  const gridCols = showPerDayPAR
+    ? `1fr 60px 90px ${parColWidths} 55px 58px 36px 44px`
+    : `1fr 60px 90px 50px 55px 58px 36px 44px`;
+
   const groups={},groupOrder=[];
   for (const item of filtered) {
     if (!groups[item.category]){groups[item.category]=[];groupOrder.push(item.category);}
     groups[item.category].push(item);
   }
   let html='<div class="card">';
-  html+=`<div class="cat-col-hdr">
+  const parHdrs = showPerDayPAR
+    ? orderDayList.map(d=>`<span style="text-align:center;font-size:.6rem">PAR<br>${DAY_SHORT[d]}</span>`).join('')
+    : `<span style="text-align:center">PAR</span>`;
+  html+=`<div class="cat-col-hdr" style="grid-template-columns:${gridCols}">
     <span>Item</span><span style="font-family:monospace">SKU</span>
-    <span>Vendor</span><span style="text-align:center">PAR</span>
+    <span>Vendor</span>${parHdrs}
     <span style="text-align:right">Price</span>
     <span style="text-align:center">Square</span>
     <span style="text-align:center">On</span><span></span>
@@ -1223,14 +1318,22 @@ function renderCatalog() {
       const sqCell = sqMapped
         ? `<div style="text-align:center"><span style="color:var(--green);font-size:.75rem;font-weight:700">✓</span></div>`
         : `<div style="text-align:center;color:var(--muted);font-size:.75rem">—</div>`;
-      html+=`<div class="cat-item-row${item.active?'':' inactive'}">
+      const parCells = showPerDayPAR
+        ? orderDayList.map(d => {
+            const override = dayParOverrides[item.id]?.[d];
+            const p = override !== undefined ? override : (item.par || 0);
+            const isOv = override !== undefined && override !== item.par;
+            return `<div style="text-align:center;font-weight:700;color:${isOv?'var(--blue)':'var(--navy)'};font-size:.82rem">${p}</div>`;
+          }).join('')
+        : `<div style="text-align:center;font-weight:700;color:var(--navy)">${item.par||0}</div>`;
+      html+=`<div class="cat-item-row${item.active?'':' inactive'}" style="grid-template-columns:${gridCols}">
         <div>
           <span style="font-weight:600;font-size:.85rem">${esc(item.name)}</span>
           ${item.packaging?`<span style="font-size:.68rem;color:var(--muted);margin-left:5px">${esc(item.packaging)}</span>`:''}
         </div>
         <div style="font-family:monospace;font-size:.72rem;color:var(--navy);font-weight:700">${esc(item.sku||'—')}</div>
         <div style="font-size:.78rem;color:var(--muted)">${esc(item.vendor||'—')}</div>
-        <div style="text-align:center;font-weight:700;color:var(--navy)">${item.par||0}</div>
+        ${parCells}
         <div style="text-align:right;font-size:.8rem">${price}</div>
         ${sqCell}
         <div style="text-align:center">
@@ -1267,6 +1370,24 @@ function populateCatModal(selected='') {
     + cats.map(c => `<option${c===selected?' selected':''}>${esc(c)}</option>`).join('');
 }
 
+function renderDayParInputs(itemId) {
+  const section = document.getElementById('day-par-section');
+  const container = document.getElementById('day-par-inputs');
+  if (!orderScheduleLoaded || orderDays.size === 0) { section.style.display='none'; return; }
+  const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const defaultPar = itemId ? (catalogData.find(i=>i.id===itemId)?.par||0) : 0;
+  const overrides = itemId ? (dayParOverrides[itemId] || {}) : {};
+  section.style.display = 'block';
+  container.innerHTML = [...orderDays].sort((a,b)=>a-b).map(d => `
+    <div>
+      <label class="modal-lbl">${DAY_NAMES[d]}</label>
+      <input class="modal-inp" type="number" min="0" step="1" id="day-par-${d}"
+        value="${overrides[d] !== undefined ? overrides[d] : ''}"
+        placeholder="Default (${defaultPar})">
+    </div>
+  `).join('');
+}
+
 function openAddModal() {
   editingId=null;
   document.getElementById('modal-title').textContent='Add Item';
@@ -1278,6 +1399,7 @@ function openAddModal() {
   document.getElementById('m-price').value=0;
   populateCatModal('');
   document.getElementById('m-active').checked=true;
+  renderDayParInputs(null);
   document.getElementById('modal-overlay').style.display='block';
   document.getElementById('m-name').focus();
 }
@@ -1296,6 +1418,7 @@ function openEditModal(id) {
   document.getElementById('m-price').value=item.price||0;
   document.getElementById('m-packaging').value=item.packaging||'';
   document.getElementById('m-active').checked=item.active!==false;
+  renderDayParInputs(id);
   document.getElementById('modal-overlay').style.display='block';
 }
 function closeModal(){const el=document.getElementById('modal-overlay');if(el)el.style.display='none';editingId=null;}
@@ -1352,6 +1475,27 @@ async function saveItem() {
       const [saved]=await res.json();catalogData.push(saved);
       toast('Item added ✓');
     }
+    // Save per-day PAR overrides
+    if (orderScheduleLoaded && orderDays.size > 0) {
+      const savedId = editingId || catalogData[catalogData.length-1]?.id;
+      if (savedId) {
+        const parRows = [];
+        for (const d of orderDays) {
+          const inp = document.getElementById(`day-par-${d}`);
+          const val = inp && inp.value.trim() !== '' ? parseFloat(inp.value) : NaN;
+          if (!isNaN(val) && val >= 0) parRows.push({item_id:savedId, day_of_week:d, par:Math.round(val)});
+        }
+        if (parRows.length) {
+          await fetch(`${SUPABASE_URL}/rest/v1/catalog_day_par`, {
+            method:'POST',
+            headers:{...supaHeaders(),'Prefer':'resolution=merge-duplicates,return=minimal'},
+            body:JSON.stringify(parRows),
+          });
+          dayParOverrides[savedId] = dayParOverrides[savedId] || {};
+          for (const r of parRows) dayParOverrides[savedId][r.day_of_week] = r.par;
+        }
+      }
+    }
     closeModal();renderCatalog();await loadCatalogAndDaily();
   } catch(e){showModalErr('Save failed — '+e.message);console.error(e);}
   finally{btn.textContent=editingId?'Save Changes':'Add Item';btn.disabled=false;}
@@ -1382,6 +1526,51 @@ function loadSettings() {
       +' oninput="saveSettings()"></div>';
   });
   document.getElementById('vendor-email-list').innerHTML = vhtml;
+
+  // Order schedule — already loaded from Supabase in loadCatalogAndDaily
+  const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  document.getElementById('order-schedule-grid').innerHTML = DAYS.map((d,i) => {
+    const checked = orderDays.has(i);
+    return `<label id="ord-lbl-${i}" style="display:flex;flex-direction:column;align-items:center;gap:4px;
+      cursor:pointer;border-radius:8px;padding:8px 4px;font-size:.78rem;font-weight:700;
+      border:1.5px solid ${checked?'var(--blue)':'var(--border)'};
+      background:${checked?'var(--blue-lt)':'#f7fafc'}">
+      <input type="checkbox" id="ord-day-${i}" ${checked?'checked':''} style="width:18px;height:18px"
+        onchange="updateOrderDayStyle(${i})">
+      ${d}
+    </label>`;
+  }).join('');
+}
+
+function updateOrderDayStyle(idx) {
+  const cb  = document.getElementById(`ord-day-${idx}`);
+  const lbl = document.getElementById(`ord-lbl-${idx}`);
+  if (!lbl || !cb) return;
+  lbl.style.background   = cb.checked ? 'var(--blue-lt)' : '#f7fafc';
+  lbl.style.borderColor  = cb.checked ? 'var(--blue)'    : 'var(--border)';
+}
+
+async function saveOrderSchedule() {
+  if (SUPABASE_URL === 'YOUR_SUPABASE_URL') { toast('Configure Supabase first'); return; }
+  const rows = [];
+  for (let i = 0; i < 7; i++) {
+    rows.push({ day_of_week: i, is_order_day: document.getElementById(`ord-day-${i}`)?.checked || false });
+  }
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/order_schedule`, {
+      method: 'POST',
+      headers: { ...supaHeaders(), 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify(rows),
+    });
+    if (!res.ok) throw new Error('Save failed: ' + res.status);
+    orderDays = new Set(rows.filter(r => r.is_order_day).map(r => r.day_of_week));
+    orderScheduleLoaded = true;
+    toast('Order schedule saved ✓');
+    renderDailyForm(null);
+  } catch(e) {
+    toast('⚠ Could not save schedule: ' + e.message);
+    console.error(e);
+  }
 }
 
 function saveSettings() {

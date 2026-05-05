@@ -468,6 +468,20 @@ header{background:var(--navy);color:#fff;padding:12px 16px;position:sticky;top:0
     </div>
     <button class="btn btn-primary btn-sm" onclick="saveOrderSchedule()">💾 Save Schedule</button>
   </div>
+
+  <div class="card" style="padding:18px;margin-top:12px">
+    <div class="card-hdr" style="margin:-18px -18px 16px;border-radius:var(--radius) var(--radius) 0 0">
+      PAR Overrides by Day
+    </div>
+    <div style="font-size:.78rem;color:var(--muted);margin-bottom:14px">
+      Set PAR for each item on a specific order day. Items matching the catalog default are shown in normal weight; overrides appear in blue. Leave a value at the catalog default to remove the override.
+    </div>
+    <div id="par-day-selector" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+      <div style="color:var(--muted);font-size:.8rem">Loading…</div>
+    </div>
+    <div id="par-grid-container"></div>
+    <button class="btn btn-primary btn-sm" style="margin-top:14px" onclick="saveParGrid()">💾 Save PAR</button>
+  </div>
 </div>
 
 <div class="panel" id="panel-square">
@@ -561,6 +575,7 @@ let orderItems = [], histData = [];
 let squareOpeningData = {}; // catalog_item_id -> Square on-hand quantity for today
 let orderDays = new Set();      // Set of day_of_week (0=Sun…6=Sat) that are order days
 let dayParOverrides = {};        // item_id -> {dow: par} — per-day PAR overrides
+let parGridDow = -1;             // selected DOW in the Settings PAR grid
 let orderScheduleLoaded = false; // true once order_schedule table has been fetched
 let currentEntryDow = new Date().getDay(); // DOW of the entry date currently selected
 
@@ -1527,6 +1542,9 @@ function loadSettings() {
   });
   document.getElementById('vendor-email-list').innerHTML = vhtml;
 
+  renderParDaySelector();
+  renderParGrid();
+
   // Order schedule — already loaded from Supabase in loadCatalogAndDaily
   const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   document.getElementById('order-schedule-grid').innerHTML = DAYS.map((d,i) => {
@@ -1569,6 +1587,116 @@ async function saveOrderSchedule() {
     renderDailyForm(null);
   } catch(e) {
     toast('⚠ Could not save schedule: ' + e.message);
+    console.error(e);
+  }
+}
+
+function renderParDaySelector() {
+  const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const sel = document.getElementById('par-day-selector');
+  if (!sel) return;
+  const orderDayList = [...orderDays].sort((a,b)=>a-b);
+  if (orderDayList.length === 0) {
+    sel.innerHTML = '<div style="color:var(--muted);font-size:.8rem">No order days configured. Set the Order Schedule above first.</div>';
+    document.getElementById('par-grid-container').innerHTML = '';
+    return;
+  }
+  if (parGridDow === -1 || !orderDays.has(parGridDow)) parGridDow = orderDayList[0];
+  sel.innerHTML = orderDayList.map(d =>
+    `<button onclick="parGridDow=${d};renderParDaySelector();renderParGrid()"
+      style="padding:7px 14px;border-radius:8px;font-size:.82rem;font-weight:700;cursor:pointer;
+        border:1.5px solid ${d===parGridDow?'var(--blue)':'var(--border)'};
+        background:${d===parGridDow?'var(--blue-lt)':'#f7fafc'};
+        color:${d===parGridDow?'var(--blue)':'var(--text)'}">${DAYS[d]}</button>`
+  ).join('');
+}
+
+function renderParGrid() {
+  const container = document.getElementById('par-grid-container');
+  if (!container) return;
+  const active = catalogData.filter(i => i.active);
+  if (parGridDow === -1 || active.length === 0) {
+    container.innerHTML = '<div style="color:var(--muted);font-size:.8rem">No items.</div>';
+    return;
+  }
+  const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  let html = '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">'
+    + '<div style="display:grid;grid-template-columns:1fr 80px 80px;background:var(--blue-lt)">'
+    + '<div style="padding:8px 12px;font-weight:700;font-size:.78rem;color:var(--blue)">Item</div>'
+    + '<div style="padding:8px 12px;font-weight:700;font-size:.78rem;color:var(--blue);text-align:center">Default</div>'
+    + '<div style="padding:8px 12px;font-weight:700;font-size:.78rem;color:var(--blue);text-align:center">' + DAYS[parGridDow] + ' PAR</div>'
+    + '</div>';
+  let prevCat = null;
+  for (const item of active) {
+    if (item.category !== prevCat) {
+      html += '<div style="grid-column:1/-1;padding:4px 12px;background:#f0f4f8;font-size:.7rem;font-weight:700;'
+        + 'color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-top:1px solid var(--border)">'
+        + item.category + '</div>';
+      prevCat = item.category;
+    }
+    const override = dayParOverrides[item.id]?.[parGridDow];
+    const val = override !== undefined ? override : (item.par || 0);
+    const isOv = override !== undefined && override !== (item.par || 0);
+    html += '<div style="display:contents">'
+      + '<div style="padding:7px 12px;border-top:1px solid var(--border);font-size:.86rem;align-self:center">' + item.name + '</div>'
+      + '<div style="padding:7px 12px;border-top:1px solid var(--border);text-align:center;color:var(--muted);font-size:.86rem;align-self:center">' + (item.par || 0) + '</div>'
+      + '<div style="padding:5px 10px;border-top:1px solid var(--border);text-align:center">'
+      + '<input type="number" min="0" step="1" data-item-id="' + item.id + '" data-default-par="' + (item.par || 0) + '" value="' + val + '"'
+      + ' oninput="onParGridInput(this)"'
+      + ' style="width:60px;text-align:center;border:1.5px solid ' + (isOv?'var(--blue)':'var(--border)') + ';border-radius:6px;'
+      + 'padding:4px 6px;font-size:.9rem;font-weight:' + (isOv?'700':'400') + ';color:' + (isOv?'var(--blue)':'inherit') + '">'
+      + '</div></div>';
+  }
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+function onParGridInput(input) {
+  const def = parseInt(input.dataset.defaultPar) || 0;
+  const val = parseInt(input.value);
+  const isOv = !isNaN(val) && val !== def;
+  input.style.borderColor = isOv ? 'var(--blue)' : 'var(--border)';
+  input.style.fontWeight  = isOv ? '700' : '400';
+  input.style.color       = isOv ? 'var(--blue)' : 'inherit';
+}
+
+async function saveParGrid() {
+  if (SUPABASE_URL === 'YOUR_SUPABASE_URL') { toast('Configure Supabase first'); return; }
+  if (parGridDow === -1) { toast('Select a day first'); return; }
+  const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const inputs = document.querySelectorAll('#par-grid-container input[data-item-id]');
+  const overrideRows = [];
+  for (const inp of inputs) {
+    const itemId = parseInt(inp.dataset.itemId);
+    const defPar = parseInt(inp.dataset.defaultPar) || 0;
+    const val    = parseInt(inp.value);
+    if (!isNaN(val) && val !== defPar) {
+      overrideRows.push({ item_id: itemId, day_of_week: parGridDow, par: val });
+    }
+  }
+  try {
+    await fetch(`${SUPABASE_URL}/rest/v1/catalog_day_par?day_of_week=eq.${parGridDow}`, {
+      method: 'DELETE', headers: supaHeaders(),
+    });
+    if (overrideRows.length) {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/catalog_day_par`, {
+        method: 'POST',
+        headers: { ...supaHeaders(), 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify(overrideRows),
+      });
+      if (!res.ok) throw new Error('Save failed: ' + res.status);
+    }
+    for (const item of catalogData) {
+      if (dayParOverrides[item.id]) delete dayParOverrides[item.id][parGridDow];
+    }
+    for (const r of overrideRows) {
+      if (!dayParOverrides[r.item_id]) dayParOverrides[r.item_id] = {};
+      dayParOverrides[r.item_id][r.day_of_week] = r.par;
+    }
+    toast('PAR overrides saved for ' + DAYS[parGridDow] + ' ✓');
+    renderParGrid();
+  } catch(e) {
+    toast('⚠ Could not save PAR: ' + e.message);
     console.error(e);
   }
 }

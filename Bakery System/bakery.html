@@ -576,6 +576,7 @@ let squareOpeningData = {}; // catalog_item_id -> Square on-hand quantity for to
 let orderDays = new Set();      // Set of day_of_week (0=Sun…6=Sat) that are order days
 let dayParOverrides = {};        // item_id -> {dow: par} — per-day PAR overrides
 let parGridDow = -1;             // selected DOW in the Settings PAR grid
+let parInputList = [];           // ordered list of PAR grid inputs for keyboard nav
 let orderScheduleLoaded = false; // true once order_schedule table has been fetched
 let currentEntryDow = new Date().getDay(); // DOW of the entry date currently selected
 
@@ -1620,35 +1621,54 @@ function renderParGrid() {
     return;
   }
   const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  let html = '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">'
-    + '<div style="display:grid;grid-template-columns:1fr 80px 80px;background:var(--blue-lt)">'
-    + '<div style="padding:8px 12px;font-weight:700;font-size:.78rem;color:var(--blue)">Item</div>'
-    + '<div style="padding:8px 12px;font-weight:700;font-size:.78rem;color:var(--blue);text-align:center">Default</div>'
-    + '<div style="padding:8px 12px;font-weight:700;font-size:.78rem;color:var(--blue);text-align:center">' + DAYS[parGridDow] + ' PAR</div>'
-    + '</div>';
+  let html = '<table style="width:100%;border-collapse:collapse;border:1px solid var(--border);border-radius:8px;overflow:hidden">'
+    + '<thead><tr style="background:var(--blue-lt)">'
+    + '<th style="padding:8px 12px;text-align:left;font-size:.78rem;color:var(--blue);font-weight:700;border-bottom:2px solid var(--border)">Item</th>'
+    + '<th style="padding:8px 12px;text-align:center;font-size:.78rem;color:var(--blue);font-weight:700;border-bottom:2px solid var(--border);width:80px">Default</th>'
+    + '<th style="padding:8px 12px;text-align:center;font-size:.78rem;color:var(--blue);font-weight:700;border-bottom:2px solid var(--border);width:90px">' + DAYS[parGridDow] + ' PAR</th>'
+    + '</tr></thead><tbody>';
   let prevCat = null;
   for (const item of active) {
     if (item.category !== prevCat) {
-      html += '<div style="grid-column:1/-1;padding:4px 12px;background:#f0f4f8;font-size:.7rem;font-weight:700;'
+      html += '<tr style="background:#f0f4f8"><td colspan="3" style="padding:4px 12px;font-size:.7rem;font-weight:700;'
         + 'color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-top:1px solid var(--border)">'
-        + item.category + '</div>';
+        + item.category + '</td></tr>';
       prevCat = item.category;
     }
     const override = dayParOverrides[item.id]?.[parGridDow];
     const val = override !== undefined ? override : (item.par || 0);
     const isOv = override !== undefined && override !== (item.par || 0);
-    html += '<div style="display:contents">'
-      + '<div style="padding:7px 12px;border-top:1px solid var(--border);font-size:.86rem;align-self:center">' + item.name + '</div>'
-      + '<div style="padding:7px 12px;border-top:1px solid var(--border);text-align:center;color:var(--muted);font-size:.86rem;align-self:center">' + (item.par || 0) + '</div>'
-      + '<div style="padding:5px 10px;border-top:1px solid var(--border);text-align:center">'
+    html += '<tr>'
+      + '<td style="padding:7px 12px;font-size:.86rem;border-top:1px solid var(--border)">' + item.name + '</td>'
+      + '<td style="padding:7px 12px;text-align:center;color:var(--muted);font-size:.86rem;border-top:1px solid var(--border)">' + (item.par || 0) + '</td>'
+      + '<td style="padding:5px 8px;text-align:center;border-top:1px solid var(--border)">'
       + '<input type="number" min="0" step="1" data-item-id="' + item.id + '" data-default-par="' + (item.par || 0) + '" value="' + val + '"'
-      + ' oninput="onParGridInput(this)"'
-      + ' style="width:60px;text-align:center;border:1.5px solid ' + (isOv?'var(--blue)':'var(--border)') + ';border-radius:6px;'
+      + ' oninput="onParGridInput(this)" onkeydown="handleParKey(event,this)"'
+      + ' style="width:64px;text-align:center;border:1.5px solid ' + (isOv?'var(--blue)':'var(--border)') + ';border-radius:6px;'
       + 'padding:4px 6px;font-size:.9rem;font-weight:' + (isOv?'700':'400') + ';color:' + (isOv?'var(--blue)':'inherit') + '">'
-      + '</div></div>';
+      + '</td></tr>';
   }
-  html += '</div>';
+  html += '</tbody></table>';
   container.innerHTML = html;
+  buildParInputList();
+}
+
+function buildParInputList() {
+  parInputList = Array.from(document.querySelectorAll('#par-grid-container input[data-item-id]'));
+}
+
+function handleParKey(e, input) {
+  const idx = parInputList.indexOf(input);
+  if (idx === -1) return;
+  let next = -1;
+  if (e.key==='ArrowDown'||(e.key==='Enter'&&!e.shiftKey)){e.preventDefault();next=idx+1;}
+  else if (e.key==='ArrowUp'||(e.key==='Enter'&&e.shiftKey)){e.preventDefault();next=idx-1;}
+  else if (e.key==='Tab'&&!e.shiftKey){e.preventDefault();next=idx+1;}
+  else if (e.key==='Tab'&&e.shiftKey){e.preventDefault();next=idx-1;}
+  if (next>=0&&next<parInputList.length) {
+    parInputList[next].focus(); parInputList[next].select();
+    parInputList[next].closest('tr')?.scrollIntoView({block:'nearest',behavior:'smooth'});
+  }
 }
 
 function onParGridInput(input) {

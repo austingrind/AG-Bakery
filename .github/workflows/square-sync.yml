@@ -2,11 +2,13 @@ name: Daily Square Inventory Snapshot
 
 on:
   schedule:
-    # 7:00 AM CT — CDT is UTC-5 (12:00 UTC), CST is UTC-6 (13:00 UTC)
-    # Two entries handle the daylight saving transition:
-    - cron: '0 12 * * *'
-    - cron: '0 13 * * *'
+    # 7:00 AM CT — splits the difference between CDT (UTC-5) and CST (UTC-6)
+    - cron: '30 12 * * *'
   workflow_dispatch:
+
+concurrency:
+  group: daily-square-snapshot
+  cancel-in-progress: false
 
 jobs:
   snapshot:

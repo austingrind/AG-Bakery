@@ -164,7 +164,10 @@ header{background:var(--navy);color:#fff;padding:12px 16px;position:sticky;top:0
 .order-card{background:var(--card);border-radius:var(--radius);
   box-shadow:var(--shadow);overflow:hidden;margin-bottom:14px}
 .order-hdr{background:var(--navy);color:#fff;padding:12px 16px;
-  display:flex;justify-content:space-between;font-size:.95rem;font-weight:700}
+  display:flex;justify-content:space-between;align-items:center;font-size:.95rem;font-weight:700}
+.btn-email-vendor{background:#fff;color:var(--navy);border:none;border-radius:6px;
+  padding:5px 12px;font-size:.78rem;font-weight:700;cursor:pointer;white-space:nowrap}
+.btn-email-vendor:hover{background:#e8f0fb}
 .order-table{width:100%;border-collapse:collapse;font-size:.83rem}
 .order-table th{background:var(--cat-bg);color:var(--cat-txt);
   padding:7px 10px;font-size:.72rem;font-weight:700;text-transform:uppercase}
@@ -1144,8 +1147,16 @@ function renderOrder() {
   let html='';
   for (const [v,items] of Object.entries(byVendor).sort()) {
     const total = items.reduce((s,i)=>s+(i.price>0?i.qty*i.price:0),0);
+    const vendorEmail = getVendorEmail(v);
+    const emailBtn = vendorEmail
+      ? `<button class="btn-email-vendor" onclick="emailVendor('${esc(v)}')" title="Email order to ${esc(vendorEmail)}">✉ Email Order</button>`
+      : '';
     html += `<div class="order-card"><div class="order-hdr">
-      <span>📦 ${esc(v)}</span><span>${items.length} item${items.length>1?'s':''}</span></div>
+      <span>📦 ${esc(v)}</span>
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="font-weight:400;font-size:.82rem">${items.length} item${items.length>1?'s':''}</span>
+        ${emailBtn}
+      </div></div>
       <div class="table-wrap"><table class="order-table"><thead><tr>
         <th>Item</th><th style="text-align:center">Noon Inv</th>
         <th style="text-align:center">PAR</th>
@@ -1812,9 +1823,13 @@ function emailVendor(vendor) {
   const toEmail = getVendorEmail(vendor);
   const cc      = getCC();
   const subject = encodeURIComponent("It's A Grind Coffee House - Bakery Order "+dateFmt);
-  if (!toEmail) toast('No email set for '+vendor+' — add it in Settings tab');
-  window.location.href = 'mailto:'+toEmail+'?cc='+encodeURIComponent(cc)
+  if (!toEmail) { toast('No email set for '+vendor+' — add it in Settings tab'); return; }
+  const a = document.createElement('a');
+  a.href = 'mailto:'+toEmail+'?cc='+encodeURIComponent(cc)
     +'&subject='+subject+'&body='+encodeURIComponent(body);
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
 }
 
 

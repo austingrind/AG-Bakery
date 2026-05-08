@@ -806,9 +806,8 @@ function getItemValues(item) {
     ? d.closing_inventory : 0;
   const used    = Math.max(open - closing, 0);
   const upk = item.units_per_pkg || 1;
-  // Orders are placed at noon — use noon_inventory if available, else fall back to closing
-  const orderBase = noonInv !== null ? noonInv : closing;
-  const rawNeeded = isOrderDay ? Math.max(par - orderBase, 0) : 0;
+  // Orders use noon_inventory only — no calculation until noon is entered
+  const rawNeeded = isOrderDay && noonInv !== null ? Math.max(par - noonInv, 0) : 0;
   const autoOrd = upk > 1 ? Math.ceil(rawNeeded / upk) : rawNeeded;
   const orderVal = d.order_qty !== null && d.order_qty !== undefined ? d.order_qty : autoOrd;
   const isOv    = isOrderDay && d.order_qty !== null && d.order_qty !== undefined && d.order_qty !== autoOrd;

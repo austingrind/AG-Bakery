@@ -1848,10 +1848,10 @@ async function emailVendor(vendor) {
     const bdr = 'border-bottom:1px solid #e8edf2;';
     const td  = `style="${fw}${bg}${bdr}padding:4px 8px;font-family:Arial,sans-serif;font-size:9pt;"`;
     rows += `<tr>
-      <td ${td} align="right">${ordered ? orderVal : ''}</td>
+      <td ${td} align="right">${ordered ? orderVal : '&nbsp;'}</td>
       <td ${td}>${esc(item.name)}</td>
-      <td ${td} align="right">${item.price>0?'$'+parseFloat(item.price).toFixed(2):''}</td>
-      <td ${td} align="right">${ordered?(lineTotal>0?'$'+lineTotal.toFixed(2):'$0.00'):''}</td>
+      <td ${td} align="right">${item.price>0?'$'+parseFloat(item.price).toFixed(2):'&nbsp;'}</td>
+      <td ${td} align="right">${ordered?(lineTotal>0?'$'+lineTotal.toFixed(2):'$0.00'):'&nbsp;'}</td>
     </tr>`;
   }
   const totalFmt = '$'+total.toFixed(2);
@@ -1897,6 +1897,9 @@ async function emailVendor(vendor) {
   </tr>
   <tr><td colspan="2" style="padding-top:14px;font-size:9pt;color:#555555;">
     Please confirm receipt of this order. Thank you!
+  </td></tr>
+  <tr><td colspan="2" style="padding-top:10px;font-size:13pt;font-weight:bold;color:#cc0000;font-family:Arial,sans-serif;">
+    Double Wrap this order
   </td></tr>
 </table>`;
 

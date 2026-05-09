@@ -1823,6 +1823,58 @@ function printVendor(vendorSlug) {
   allCards.forEach(c => { c.style.display = ''; });
 }
 
+// Russell's master order form — all items as they appear on the vendor's form
+const RUSSELLS_FORM = [
+  {name:'DANISH - CHEESE',                    price:1.88},
+  {name:'DANISH - BLUEBERRY',                 price:1.95},
+  {name:'DANISH - STRAWBERRY',                price:1.95},
+  {name:'CROISSANT - PLAIN',                  price:2.00},
+  {name:'CROISSANT - CIN. ALMOND',            price:2.20},
+  {name:'CROISSANT - STRAW. CHEE',            price:2.10},
+  {name:'CROISSANT - CHOCOLATE',              price:2.10},
+  {name:'CROISSANT - HAM/CHEESE',             price:2.75},
+  {name:'CROISSANT - SPINACH',                price:2.75},
+  {name:'CROISSANT - TURKEY PROVOLONE',       price:2.75},
+  {name:'BAKED APPLE FRITTER',                price:2.17},
+  {name:'CINNAMON ROLL',                      price:2.17},
+  {name:'SCHNECKEN',                          price:2.17},
+  {name:'MUFFINS - BLUEBERRY',               price:1.74},
+  {name:'MUFFIN - BRAN',                      price:1.74},
+  {name:'MUFFIN - PUMPKIN',                   price:1.74},
+  {name:'MUFFIN - CRANBERRY',                 price:1.74},
+  {name:'MUFFIN - BANANA CHOCOLATE',          price:1.74},
+  {name:'MUFFIN - ALMOND POPPYSEED',          price:1.74},
+  {name:'MUFFIN - GLUTEN FREE BAN. NUT',      price:2.46},
+  {name:'SCONE - CRANBERRY',                  price:1.85},
+  {name:'SCONE - BLUEBERRY',                  price:1.85},
+  {name:'SCONE - WHT CHOC/APRICOT',           price:1.85},
+  {name:'SNOW MAN COOKIE',                    price:3.00},
+  {name:'CRANBERRY BREAD',                    price:15.83},
+  {name:'COOKIES - SUGAR',                    price:1.50},
+  {name:'COOKIES - PEANUT BUTTER',            price:1.50},
+  {name:'COOKIES - EARL GREY',                price:1.50},
+  {name:'COOKIES - OATMEAL RAISIN WALNUT',    price:1.50},
+  {name:'COOKIES - CHOCOLATE CHIP',           price:1.50},
+  {name:'COOKIES - CHOC.-CHOC. CHIP',         price:1.50},
+  {name:'BREAD - GLUTEN FR LEMON POPPY',      price:17.73},
+  {name:'BREAD - BANANA SLC/WRP',             price:15.83},
+  {name:'BREAD - PUMPKIN SLC/WRP',            price:15.83},
+  {name:'BREAD - HARVEST SLC/WRP',            price:15.83},
+  {name:'BREAD - BANANA CHOC SLC/WRP',        price:15.83},
+  {name:'BREAD - GF BANANA SLC/WRP',          price:17.73},
+  {name:'BREAD - GF PUMPKIN SLC/WRP',         price:17.73},
+  {name:'BREAD - BANANA LOAF(NOT SLICED)',     price:12.30},
+  {name:'BREAD - PUMPKIN LOAF(NOT SLICED)',    price:12.30},
+  {name:'BREAD - HARVEST LOAF(NOT SLICED)',    price:12.30},
+  {name:'BREAD - GF BANANA LOAF(NOT SLICED)', price:14.76},
+  {name:'BREAD - GF PUMPKIN LOAF(NOT SLICED)',price:14.76},
+];
+
+function normalizeItemName(s) {
+  return (s||'').trim().toUpperCase()
+    .replace(/\bNEW\b/g,'').replace(/\s*-\s*/g,' - ').replace(/\s+/g,' ').trim();
+}
+
 async function emailVendor(vendor) {
   const date = document.getElementById('entry-date').value;
   const dateFmt = date ? new Date(date+'T12:00:00').toLocaleDateString('en-US',
@@ -1836,21 +1888,42 @@ async function emailVendor(vendor) {
   const cc      = getCC();
   if (!toEmail) { toast('No email set for '+vendor+' — add it in Settings tab'); return; }
 
+  // Build catalog lookup by normalized name for form-based vendors
+  const isRussells = vendor.toLowerCase().includes('russell');
+  const catalogByName = {};
+  for (const item of allItems) {
+    catalogByName[normalizeItemName(item.name)] = item;
+  }
+
+  // Determine row source: Russell's uses master form; others use catalog directly
+  const rowSource = isRussells
+    ? RUSSELLS_FORM.map(f => {
+        const cat = catalogByName[normalizeItemName(f.name)];
+        return cat
+          ? {...cat, _formPrice: f.price}          // catalog match — use order logic
+          : {id:null, name:f.name, price:f.price, _formOnly:true}; // form-only row
+      })
+    : allItems;
+
   let total = 0;
   let rows = '';
-  for (const item of allItems) {
-    const {orderVal} = getItemValues(item);
-    const ordered   = orderVal > 0;
-    const lineTotal = ordered && item.price > 0 ? orderVal * item.price : 0;
-    if (ordered) total += lineTotal;
+  for (const item of rowSource) {
+    let ordered = false, orderVal = 0, lineTotal = 0;
+    if (!item._formOnly) {
+      ({orderVal} = getItemValues(item));
+      ordered   = orderVal > 0;
+      lineTotal = ordered && item.price > 0 ? orderVal * item.price : 0;
+      if (ordered) total += lineTotal;
+    }
     const fw  = ordered ? 'font-weight:bold;' : 'color:#888888;';
     const bg  = ordered ? 'background-color:#fffbe6;' : 'background-color:#ffffff;';
     const bdr = 'border-bottom:1px solid #e8edf2;';
     const td  = `style="${fw}${bg}${bdr}padding:4px 8px;font-family:Arial,sans-serif;font-size:9pt;"`;
+    const displayPrice = item.price > 0 ? item.price : (item._formPrice||0);
     rows += `<tr>
       <td ${td} align="right">${ordered ? orderVal : '&nbsp;'}</td>
       <td ${td}>${esc(item.name)}</td>
-      <td ${td} align="right">${item.price>0?'$'+parseFloat(item.price).toFixed(2):'&nbsp;'}</td>
+      <td ${td} align="right">${displayPrice>0?'$'+parseFloat(displayPrice).toFixed(2):'&nbsp;'}</td>
       <td ${td} align="right">${ordered?(lineTotal>0?'$'+lineTotal.toFixed(2):'$0.00'):'&nbsp;'}</td>
     </tr>`;
   }

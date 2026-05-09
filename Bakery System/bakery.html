@@ -1900,7 +1900,20 @@ async function emailVendor(vendor) {
   </td></tr>
 </table>`;
 
-  // Copy HTML to clipboard so user can paste into Outlook compose window
+  const subject = `It's A Grind Coffee House - Bakery Order ${dateFmt}`;
+
+  // Try local email helper first — fully automatic send via Outlook COM
+  try {
+    const resp = await fetch('http://localhost:9999/send', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({to:toEmail, cc, subject, html:htmlBody}),
+      signal: AbortSignal.timeout(3000)
+    });
+    if (resp.ok) { toast('✓ Order sent via Outlook'); return; }
+  } catch(e) { /* helper not running — fall through to clipboard modal */ }
+
+  // Fallback: copy HTML to clipboard, open Outlook compose for manual paste
   try {
     await navigator.clipboard.write([
       new ClipboardItem({
@@ -1908,12 +1921,8 @@ async function emailVendor(vendor) {
         'text/plain': new Blob([`AUSTIN GRIND Order (NORTH ROUTE) - ${dateFmt}\nTotal: ${totalFmt}`], {type:'text/plain'})
       })
     ]);
-  } catch(e) {
-    toast('Could not copy to clipboard: '+e.message); return;
-  }
+  } catch(e) { toast('Could not copy to clipboard: '+e.message); return; }
 
-  // Wire up Open Outlook button with pre-filled To/CC/Subject
-  const subject = `It's A Grind Coffee House - Bakery Order ${dateFmt}`;
   document.getElementById('email-modal-btn').onclick = () => {
     const a = document.createElement('a');
     a.href = 'mailto:'+toEmail+'?cc='+encodeURIComponent(cc)+'&subject='+encodeURIComponent(subject);

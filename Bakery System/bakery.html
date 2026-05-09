@@ -1803,31 +1803,74 @@ function emailVendor(vendor) {
   const date = document.getElementById('entry-date').value;
   const dateFmt = date ? new Date(date+'T12:00:00').toLocaleDateString('en-US',
     {month:'numeric',day:'numeric',year:'numeric'}) : date;
-  const vendorItems = catalogData.filter(item => {
-    if (item.vendor !== vendor) return false;
-    const {orderVal} = getItemValues(item);
-    return orderVal > 0;
-  });
-  if (!vendorItems.length) { toast('No items to order from '+vendor); return; }
-  let body = 'Austin Grind - Bakery Order for '+dateFmt+'\n\n';
-  body += vendor.toUpperCase()+'\n'+Array(41).join('-')+'\n';
-  for (const item of vendorItems) {
-    const {orderVal} = getItemValues(item);
-    body += '  '+item.name.padEnd(35)+' Qty: '+orderVal;
-    if (item.price > 0) body += '  ($'+(orderVal * item.price).toFixed(2)+')';
-    body += '\n';
-  }
-  body += '\nPlease confirm receipt of this order.\nThank you!';
+
+  // All active items for this vendor (preserves catalog sort order)
+  const allItems = catalogData.filter(i => i.vendor === vendor);
+  const orderedItems = allItems.filter(i => getItemValues(i).orderVal > 0);
+  if (!orderedItems.length) { toast('No items to order from '+vendor); return; }
+
   const toEmail = getVendorEmail(vendor);
   const cc      = getCC();
-  const subject = encodeURIComponent("It's A Grind Coffee House - Bakery Order "+dateFmt);
   if (!toEmail) { toast('No email set for '+vendor+' — add it in Settings tab'); return; }
-  const a = document.createElement('a');
-  a.href = 'mailto:'+toEmail+'?cc='+encodeURIComponent(cc)
-    +'&subject='+subject+'&body='+encodeURIComponent(body);
+
+  let total = 0;
+  let rows = '';
+  for (const item of allItems) {
+    const {orderVal} = getItemValues(item);
+    const ordered   = orderVal > 0;
+    const lineTotal = ordered && item.price > 0 ? orderVal * item.price : 0;
+    if (ordered) total += lineTotal;
+    const b  = ordered ? 'font-weight:700;' : 'color:#555;';
+    const bg = ordered ? 'background:#fffbe6;' : '';
+    rows += `<tr style="${bg}">
+      <td style="text-align:right;padding:4px 8px;${b}">${ordered ? orderVal : ''}</td>
+      <td style="padding:4px 8px;${b}">${esc(item.name)}</td>
+      <td style="text-align:right;padding:4px 8px;${b}">${item.price>0?'$'+parseFloat(item.price).toFixed(2):''}</td>
+      <td style="text-align:right;padding:4px 8px;${b}">${ordered?(lineTotal>0?'$'+lineTotal.toFixed(2):'$0.00'):''}</td>
+    </tr>`;
+  }
+  const totalFmt = '$'+total.toFixed(2);
+
+  const htmlBody = `<!DOCTYPE html><html><head><meta charset="UTF-8"></head>
+<body style="font-family:Arial,sans-serif;font-size:10pt;color:#111;margin:20px">
+<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:4px">
+  <tr>
+    <td style="font-size:12pt;font-weight:700;color:#1a3a5c">AUSTIN GRIND Order (NORTH ROUTE)</td>
+    <td style="text-align:right;font-size:10pt;color:#1a3a5c">${esc(dateFmt)}</td>
+  </tr>
+</table>
+<hr style="border:0;border-top:2px solid #1a3a5c;margin:4px 0 10px">
+<table width="100%" cellpadding="0" cellspacing="0" style="font-size:9pt;margin-bottom:14px">
+  <tr>
+    <td width="50%"><strong>Russell's Bakery</strong><br>3339 Hancock Drive<br>Austin TX 78731<br>512-419-7877<br>wholesale@russellsbakery.com</td>
+    <td width="50%"><strong>Austin Grind</strong><br>4005 W. Parmer Lane<br>Austin, TX 78727<br>512-833-5858</td>
+  </tr>
+</table>
+<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:9.5pt">
+  <thead><tr style="background:#1a3a5c;color:#fff">
+    <th width="42" style="text-align:right;padding:5px 8px">QTY</th>
+    <th style="text-align:left;padding:5px 8px">ITEM</th>
+    <th width="72" style="text-align:right;padding:5px 8px">$/UNIT</th>
+    <th width="80" style="text-align:right;padding:5px 8px">EXTND $</th>
+    <th width="120" style="text-align:right;padding:5px 8px">TOTAL &nbsp; ${esc(totalFmt)}</th>
+  </tr></thead>
+  <tbody style="border:1px solid #dde4ec">${rows}</tbody>
+</table>
+<p style="font-size:9pt;color:#555;margin-top:14px">Please confirm receipt of this order. Thank you!</p>
+</body></html>`;
+
+  const subject = `It's A Grind Coffee House - Bakery Order ${dateFmt}`;
+  const eml = `MIME-Version: 1.0\r\nTo: ${toEmail}\r\nCC: ${cc}\r\nSubject: ${subject}\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n${htmlBody}`;
+  const blob = new Blob([eml], {type:'message/rfc822'});
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `AG-Bakery-Order-${dateFmt.replace(/\//g,'-')}.eml`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  toast('Order draft downloaded — open the .eml file to send in Outlook');
 }
 
 
@@ -2206,24 +2249,44 @@ function buildOrderHtml(vendor, items, dateFmt) {
     const lineTotal = item.price > 0 ? orderVal * item.price : 0;
     total += lineTotal;
     rows += '<tr>'
-      + '<td>' + esc(item.name) + (item.sku ? '<br><small>' + esc(item.sku) + '</small>' : '') + '</td>'
-      + '<td style="text-align:center">' + orderVal + '</td>'
-      + '<td style="text-align:right">' + (item.price>0 ? '$'+item.price.toFixed(2) : '—') + '</td>'
-      + '<td style="text-align:right">' + (lineTotal>0 ? '$'+lineTotal.toFixed(2) : '—') + '</td>'
+      + '<td class="col-qty">' + orderVal + '</td>'
+      + '<td class="col-item">' + esc(item.name) + (item.sku ? ' <span class="sku">' + esc(item.sku) + '</span>' : '') + '</td>'
+      + '<td class="col-price">' + (item.price>0 ? '$'+parseFloat(item.price).toFixed(2) : '') + '</td>'
+      + '<td class="col-ext">' + (lineTotal>0 ? '$'+lineTotal.toFixed(2) : '$0.00') + '</td>'
       + '</tr>';
   }
-  const totalRow = total > 0
-    ? '<tr style="font-weight:700;border-top:2px solid #1a3a5c">'
-      + '<td colspan="3" style="text-align:right">Estimated Total</td>'
-      + '<td style="text-align:right">$'+total.toFixed(2)+'</td>'
-      + '</tr>' : '';
-  return '<div class="vendor-block">'
-    + '<div class="vendor-hdr">' + esc(vendor) + '</div>'
-    + '<table><thead><tr>'
-    + '<th>Item</th><th style="text-align:center">Qty</th>'
-    + '<th style="text-align:right">Unit Price</th><th style="text-align:right">Total</th>'
-    + '</tr></thead><tbody>' + rows + totalRow + '</tbody></table>'
-    + '</div>';
+  const totalFmt = total > 0 ? '$'+total.toFixed(2) : '';
+  return `<div class="vendor-block">
+    <div class="order-doc-hdr">
+      <span class="doc-title">AUSTIN GRIND Order (NORTH ROUTE)</span>
+      <span class="doc-date">${esc(dateFmt)}</span>
+    </div>
+    <div class="address-block">
+      <div class="address-col">
+        <strong>Russell's Bakery</strong><br>
+        3339 Hancock Drive<br>
+        Austin TX 78731<br>
+        512-419-7877<br>
+        wholesale@russellsbakery.com
+      </div>
+      <div class="address-col">
+        <strong>Austin Grind</strong><br>
+        4005 W. Parmer Lane<br>
+        Austin, TX 78727<br>
+        512-833-5858
+      </div>
+    </div>
+    <table class="order-tbl">
+      <thead><tr>
+        <th class="col-qty">QTY</th>
+        <th class="col-item">ITEM</th>
+        <th class="col-price">$/UNIT</th>
+        <th class="col-ext">EXTND $</th>
+        <th class="col-total">TOTAL &nbsp; ${esc(totalFmt)}</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>`;
 }
 
 function openPdfWindow(htmlContent, filename) {
@@ -2231,39 +2294,58 @@ function openPdfWindow(htmlContent, filename) {
   if (!win) { toast('Pop-up blocked — allow pop-ups and try again'); return; }
   const date = document.getElementById('entry-date').value;
   const dateFmt = date ? new Date(date+'T12:00:00').toLocaleDateString('en-US',
-    {month:'long',day:'numeric',year:'numeric'}) : '';
+    {month:'numeric',day:'numeric',year:'numeric'}) : '';
   win.document.write(`<!DOCTYPE html><html><head>
     <meta charset="UTF-8">
     <title>Austin Grind Bakery Order${dateFmt ? ' - '+dateFmt : ''}</title>
     <style>
-      body { font-family: Arial, sans-serif; font-size: 11pt; margin: 24px; color: #111; }
-      h1 { font-size: 14pt; color: #1a3a5c; margin-bottom: 4px; }
-      .subtitle { font-size: 10pt; color: #555; margin-bottom: 20px; }
-      .vendor-block { margin-bottom: 24px; page-break-inside: avoid; }
-      .vendor-hdr { background: #1a3a5c; color: #fff; padding: 8px 12px;
-        font-size: 11pt; font-weight: bold; border-radius: 4px 4px 0 0; }
-      table { width: 100%; border-collapse: collapse; font-size: 10pt; }
-      thead th { background: #d6e4f0; color: #1a3a5c; padding: 6px 10px;
-        text-align: left; font-size: 9pt; text-transform: uppercase; letter-spacing: .4px; }
-      tbody td { padding: 6px 10px; border-bottom: 1px solid #e0e8f0; }
-      tbody tr:last-child td { border-bottom: none; }
-      small { font-size: 8pt; color: #888; font-family: monospace; }
+      body { font-family: Arial, sans-serif; font-size: 10pt; margin: 28px 32px; color: #111; }
+      .vendor-block { margin-bottom: 32px; page-break-inside: avoid; }
+
+      /* Document header */
+      .order-doc-hdr { display:flex; justify-content:space-between; align-items:baseline;
+        border-bottom: 2px solid #1a3a5c; padding-bottom: 6px; margin-bottom: 10px; }
+      .doc-title { font-size: 12pt; font-weight: bold; color: #1a3a5c; }
+      .doc-date  { font-size: 10pt; color: #1a3a5c; }
+
+      /* Address block */
+      .address-block { display:flex; gap: 40px; margin-bottom: 14px;
+        font-size: 9pt; line-height: 1.6; color: #333; }
+      .address-col { flex: 1; }
+
+      /* Order table */
+      .order-tbl { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
+      .order-tbl thead th { background: #1a3a5c; color: #fff;
+        padding: 5px 8px; font-size: 8.5pt; font-weight: 700;
+        text-transform: uppercase; letter-spacing: .3px; }
+      .order-tbl tbody td { padding: 5px 8px; border-bottom: 1px solid #dde4ec; }
+      .order-tbl tbody tr:last-child td { border-bottom: none; }
+      .order-tbl tbody tr:nth-child(odd) td { background: #f7fafc; }
+
+      /* Column widths */
+      .col-qty   { width: 42px;  text-align: right; }
+      .col-item  { text-align: left; }
+      .col-price { width: 72px;  text-align: right; }
+      .col-ext   { width: 80px;  text-align: right; }
+      .col-total { width: 120px; text-align: right; font-weight: 700; }
+      .sku { font-size: 7.5pt; color: #999; font-family: monospace; margin-left: 6px; }
+
+      .no-print { margin-bottom: 20px; }
       @media print {
-        body { margin: 0; }
+        body { margin: 14px 18px; }
         .no-print { display: none; }
+        .vendor-block { page-break-inside: avoid; }
       }
     </style>
   </head><body>
-    <h1>Austin Grind — Bakery Order</h1>
-    <div class="subtitle">${dateFmt}</div>
-    <div class="no-print" style="margin-bottom:16px">
+    <div class="no-print">
       <button onclick="window.print()"
         style="background:#1a3a5c;color:#fff;border:none;border-radius:6px;
-               padding:10px 24px;font-size:11pt;font-weight:bold;cursor:pointer">
+               padding:9px 22px;font-size:10pt;font-weight:bold;cursor:pointer">
         🖨 Print / Save as PDF
       </button>
-      <span style="font-size:9pt;color:#666;margin-left:12px">
-        In the print dialog, choose "Save as PDF" to download
+      <span style="font-size:8.5pt;color:#666;margin-left:12px">
+        Choose "Save as PDF" in the print dialog to download
       </span>
     </div>
     ${htmlContent}

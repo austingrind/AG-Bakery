@@ -1176,11 +1176,35 @@ function renderOrder() {
     return orderVal > 0;
   });
   orderItems = pending;
+
+  // The order is calculated from noon inventory only. With no noon count every item
+  // computes to 0, which would otherwise render as a false "all items at PAR".
+  const entered     = catalogData.filter(item => dailyData[item.id]);
+  const missingNoon = entered.filter(item => getItemValues(item).noonInv === null);
+  const noonWarn = missingNoon.length && missingNoon.length < entered.length
+    ? `<div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;
+        padding:10px 14px;margin-bottom:12px;font-size:.85rem;color:#856404">
+        ⚠️ <strong>${missingNoon.length} of ${entered.length} items</strong> have no noon
+        inventory — those items are excluded from this order.
+        <div style="margin-top:4px;font-size:.78rem">Enter their noon counts on Daily Entry and save again.</div>
+      </div>`
+    : '';
+
   if (!pending.length) {
-    document.getElementById('order-body').innerHTML =
-      '<div class="no-order"><div style="font-size:2.5rem;margin-bottom:8px">✅</div>' +
-      '<strong>Nothing to order!</strong>' +
-      '<div style="margin-top:6px;color:#999">All items are at or above PAR.</div></div>';
+    const body = document.getElementById('order-body');
+    if (entered.length && missingNoon.length === entered.length) {
+      body.innerHTML =
+        `<div class="no-order"><div style="font-size:2.5rem;margin-bottom:8px">⚠️</div>
+        <strong>Noon inventory not entered</strong>
+        <div style="margin-top:6px;color:#999">Orders are calculated from the noon count, which is
+        blank for all ${entered.length} items — so no order could be generated.<br>
+        Enter noon inventory on Daily Entry and save again.</div></div>`;
+    } else {
+      body.innerHTML = noonWarn +
+        '<div class="no-order"><div style="font-size:2.5rem;margin-bottom:8px">✅</div>' +
+        '<strong>Nothing to order!</strong>' +
+        '<div style="margin-top:6px;color:#999">All items with a noon count are at or above PAR.</div></div>';
+    }
     return;
   }
   const byVendor = {};
@@ -1190,7 +1214,7 @@ function renderOrder() {
     // par last: the effective day-of-week PAR, not the base catalog par from ...item
     byVendor[item.vendor].push({...item,noonInv,closing,qty:orderVal,autoOrd,isOv,par});
   }
-  let html='';
+  let html=noonWarn;
   for (const [v,items] of Object.entries(byVendor).sort()) {
     const total = items.reduce((s,i)=>s+(i.price>0?i.qty*i.price:0),0);
     const vendorEmail = getVendorEmail(v);
